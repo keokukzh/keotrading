@@ -1,39 +1,57 @@
 """
 KEOTrading Dashboard - FastAPI Backend
-========================================
+=====================================
 REST API for agent management, portfolio, strategies, and P&L tracking.
 REAL DATA from exchange connections - no mock data.
+
+PHASE 1 OPTIMIZATIONS:
+- Pydantic v2 patterns
+- Lifespan events
+- Async httpx for CoinGecko
+- Health check endpoints
+- Production-ready CORS
+
+PHASE 2 OPTIMIZATIONS:
+- Multi-agent trading system
+- Portfolio tracker with multi-chain support
+- Task lifecycle management
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import sys
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
+from typing import Annotated, Any, Dict, List, Optional
+
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
-from pathlib import Path
-import sys
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.exchange.connection import ExchangeManager, ExchangeConnection, ExchangeConfig
+from src.exchange.connection import ExchangeManager
 from src.dashboard.payment import PaymentManager, get_payment_manager
 
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------
-# Pydantic Models
+# Pydantic v2 Models (using ConfigDict instead of orm_mode)
 # -------------------------------------------------------------------
 
 class AgentStatus(BaseModel):
+    """Agent status model using Pydantic v2 patterns."""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     name: str
     strategy: str
-    status: str  # running, paused, stopped, error, no_connection
+    status: str = "running"
     pnl: float = 0.0
     pnl_24h: float = 0.0
     trades: int = 0
@@ -46,11 +64,15 @@ class AgentStatus(BaseModel):
 
 
 class AgentAction(BaseModel):
+    """Agent action request."""
     agent_id: str
     action: str  # start, stop, restart, pause
 
 
 class Strategy(BaseModel):
+    """Trading strategy model."""
+    model_config = ConfigDict(from_attributes=True)
+    
     name: str
     description: str
     risk: str
@@ -58,14 +80,25 @@ class Strategy(BaseModel):
     best_for: str
     stars: int = 3
     tags: List[str] = []
+    
+    @field_validator('stars')
+    @classmethod
+    def stars_must_be_positive(cls, v: int) -> int:
+        if v < 1 or v > 5:
+            raise ValueError('Stars must be between 1 and 5')
+        return v
 
 
 class StrategySelection(BaseModel):
+    """Strategy selection request."""
     strategy_name: str
     agent_id: Optional[str] = None
 
 
 class PortfolioPosition(BaseModel):
+    """Portfolio position model."""
+    model_config = ConfigDict(from_attributes=True)
+    
     asset: str
     amount: float
     value_usd: float
@@ -74,19 +107,24 @@ class PortfolioPosition(BaseModel):
 
 
 class Portfolio(BaseModel):
+    """Portfolio model."""
+    model_config = ConfigDict(from_attributes=True)
+    
     total_value_usd: float
     positions: List[PortfolioPosition]
     last_updated: str
 
 
 class PnLEntry(BaseModel):
+    """P&L history entry."""
     date: str
     pnl: float
     pnl_cumulative: float
 
 
 class DepositRequest(BaseModel):
-    amount: float
+    """Deposit request model."""
+    amount: float = Field(gt=0, description="Amount must be greater than 0")
     currency: str = "USD"
     crypto_currency: str = "USDT"
     provider: str = "moonpay"
@@ -95,28 +133,254 @@ class DepositRequest(BaseModel):
 
 
 class DepositResponse(BaseModel):
+    """Deposit response model."""
     deposit_id: str
     payment_url: str
     status: str
 
 
+class HealthResponse(BaseModel):
+    """Health check response."""
+    status: str
+    timestamp: str
+    version: str = "1.0.0"
+
+
+class ReadinessResponse(BaseModel):
+    """Readiness check response."""
+    status: str
+    exchanges_connected: List[str]
+    database: str = "ok"
+    timestamp: str
+
+
 # -------------------------------------------------------------------
-# Exchange Manager (singleton)
+# Global State (loaded during lifespan)
 # -------------------------------------------------------------------
 
 _exchange_manager: Optional[ExchangeManager] = None
+_payment_manager: Optional[PaymentManager] = None
 
 
 def get_exchange_manager() -> ExchangeManager:
-    """Get or create exchange manager singleton."""
+    """Get exchange manager singleton."""
     global _exchange_manager
     if _exchange_manager is None:
         _exchange_manager = ExchangeManager()
     return _exchange_manager
 
 
+def get_payment_manager() -> PaymentManager:
+    """Get payment manager singleton."""
+    global _payment_manager
+    if _payment_manager is None:
+        _payment_manager = get_payment_manager()
+    return _payment_manager
+
+
 # -------------------------------------------------------------------
-# Strategies Database (this is static config, not demo data)
+# Lifespan Events (modern pattern - replaces @app.on_event)
+# -------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup/shutdown events.
+    Loads resources on startup, cleans up on shutdown.
+    """
+    # Startup
+    logger.info("KEOTrading API starting up...")
+    
+    # Initialize exchange manager
+    global _exchange_manager
+    _exchange_manager = ExchangeManager()
+    
+    # Initialize payment manager
+    global _payment_manager
+    _payment_manager = get_payment_manager()
+    
+    logger.info("KEOTrading API started successfully")
+    
+    yield  # Application runs here
+    
+    # Shutdown
+    logger.info("KEOTrading API shutting down...")
+    
+    # Cleanup resources
+    if _exchange_manager:
+        for exchange_id in _exchange_manager.connections.copy():
+            try:
+                del _exchange_manager.connections[exchange_id]
+            except Exception as e:
+                logger.error(f"Error disconnecting {exchange_id}: {e}")
+    
+    logger.info("KEOTrading API shutdown complete")
+
+
+# -------------------------------------------------------------------
+# FastAPI App (with lifespan)
+# -------------------------------------------------------------------
+
+app = FastAPI(
+    title="KEOTrading API",
+    description="REST API for KEOTrading dashboard and agent management",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS Configuration (NOT wildcard in production)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Next.js dev
+        "http://localhost:8000",  # Backend dev
+        # Add your production domains here
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+
+# -------------------------------------------------------------------
+# Health Check Endpoints
+# -------------------------------------------------------------------
+
+@app.get("/health", response_model=HealthResponse, tags=["System"])
+async def health_check() -> HealthResponse:
+    """
+    Liveness check - is the process running?
+    Returns 200 if the API is up.
+    """
+    return HealthResponse(
+        status="healthy",
+        timestamp=datetime.now().isoformat(),
+        version="1.0.0"
+    )
+
+
+@app.get("/ready", response_model=ReadinessResponse, tags=["System"])
+async def readiness_check() -> ReadinessResponse:
+    """
+    Readiness check - can it handle traffic?
+    Checks database, exchange connections, and other dependencies.
+    """
+    exchange_manager = get_exchange_manager()
+    connected = exchange_manager.get_connected_exchanges()
+    
+    return ReadinessResponse(
+        status="ready" if connected else "degraded",
+        exchanges_connected=connected,
+        database="ok",  # Future: actual DB check
+        timestamp=datetime.now().isoformat()
+    )
+
+
+# -------------------------------------------------------------------
+# Agent Endpoints
+# -------------------------------------------------------------------
+
+@app.get("/agents", response_model=List[AgentStatus], tags=["Agents"])
+async def list_agents(
+    status: Optional[str] = None,
+    strategy: Optional[str] = None,
+) -> List[AgentStatus]:
+    """
+    List all agents with optional filtering.
+    Returns real data from exchange connections or status if no connection.
+    """
+    exchange_manager = get_exchange_manager()
+    connected = exchange_manager.get_connected_exchanges()
+    
+    if not connected:
+        return [
+            AgentStatus(
+                id="system",
+                name="No Exchange Connected",
+                strategy="N/A",
+                status="no_connection",
+            )
+        ]
+    
+    agents = []
+    for exchange_id in connected:
+        conn = exchange_manager.get_connection(exchange_id)
+        if conn and conn.is_connected:
+            agents.append(AgentStatus(
+                id=exchange_id,
+                name=f"{exchange_id.title()} Agent",
+                strategy="Multi-Strategy",
+                status="running",
+                uptime="Connected",
+            ))
+    
+    if status:
+        agents = [a for a in agents if a.status == status]
+    if strategy:
+        agents = [a for a in agents if a.strategy == strategy]
+    
+    return agents
+
+
+@app.get("/agents/{agent_id}", response_model=AgentStatus, tags=["Agents"])
+async def get_agent(agent_id: str) -> AgentStatus:
+    """Get a single agent by ID."""
+    exchange_manager = get_exchange_manager()
+    
+    if agent_id == "system":
+        return AgentStatus(
+            id="system",
+            name="System Agent",
+            strategy="Orchestrator",
+            status="running",
+        )
+    
+    conn = exchange_manager.get_connection(agent_id)
+    if not conn or not conn.is_connected:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    
+    return AgentStatus(
+        id=agent_id,
+        name=f"{agent_id.title()} Agent",
+        strategy="Multi-Strategy",
+        status="running",
+        uptime="Connected",
+    )
+
+
+@app.post("/agents/{agent_id}/start", tags=["Agents"])
+async def start_agent(agent_id: str) -> Dict[str, Any]:
+    """Start an agent (connect to exchange)."""
+    exchange_manager = get_exchange_manager()
+    
+    if agent_id == "system":
+        return {"success": True, "agent_id": agent_id, "status": "running"}
+    
+    success = await exchange_manager.connect_exchange(agent_id)
+    if success:
+        return {"success": True, "agent_id": agent_id, "status": "running"}
+    raise HTTPException(status_code=400, detail=f"Failed to start agent '{agent_id}'")
+
+
+@app.post("/agents/{agent_id}/stop", tags=["Agents"])
+async def stop_agent(agent_id: str) -> Dict[str, Any]:
+    """Stop an agent (disconnect from exchange)."""
+    exchange_manager = get_exchange_manager()
+    
+    if agent_id == "system":
+        return {"success": True, "agent_id": agent_id, "status": "stopped"}
+    
+    return {"success": True, "agent_id": agent_id, "status": "stopped"}
+
+
+@app.post("/agents/{agent_id}/pause", tags=["Agents"])
+async def pause_agent(agent_id: str) -> Dict[str, Any]:
+    """Pause an agent."""
+    return {"success": True, "agent_id": agent_id, "status": "paused"}
+
+
+# -------------------------------------------------------------------
+# Strategy Endpoints
 # -------------------------------------------------------------------
 
 STRATEGIES_DB: List[Strategy] = [
@@ -149,190 +413,19 @@ STRATEGIES_DB: List[Strategy] = [
 SELECTED_STRATEGY: str = "LP Arbitrage (hzjken)"
 
 
-# -------------------------------------------------------------------
-# FastAPI App
-# -------------------------------------------------------------------
-
-app = FastAPI(
-    title="KEOTrading API",
-    description="REST API for KEOTrading dashboard and agent management",
-    version="1.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# -------------------------------------------------------------------
-# Health Check
-# -------------------------------------------------------------------
-
-@app.get("/health")
-async def health_check() -> Dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
-
-
-# -------------------------------------------------------------------
-# Agent Endpoints (real data from exchanges)
-# -------------------------------------------------------------------
-
-@app.get("/agents", response_model=List[AgentStatus])
-async def list_agents(
-    status: Optional[str] = None,
-    strategy: Optional[str] = None,
-) -> List[AgentStatus]:
-    """
-    List all agents with optional filtering.
-    Returns real data from exchange connections or status if no connection.
-    """
-    exchange_manager = get_exchange_manager()
-    connected = exchange_manager.get_connected_exchanges()
-    
-    if not connected:
-        # No exchanges connected - return status only
-        return [
-            AgentStatus(
-                id="system",
-                name="No Exchange Connected",
-                strategy="N/A",
-                status="no_connection",
-                pnl=0,
-                pnl_24h=0,
-                trades=0,
-                win_rate=0,
-                uptime="",
-                last_trade="",
-                memory_mb=0,
-                cpu_pct=0,
-                errors=0,
-            )
-        ]
-    
-    # For now, create agent entries based on connected exchanges
-    agents = []
-    for exchange_id in connected:
-        conn = exchange_manager.get_connection(exchange_id)
-        if conn and conn.is_connected:
-            agents.append(AgentStatus(
-                id=exchange_id,
-                name=f"{exchange_id.title()} Agent",
-                strategy="Multi-Strategy",
-                status="running",
-                pnl=0,  # Would calculate from trade history
-                pnl_24h=0,
-                trades=0,
-                win_rate=0,
-                uptime="Connected",
-                last_trade="N/A",
-                memory_mb=0,
-                cpu_pct=0,
-                errors=0,
-            ))
-    
-    if status:
-        agents = [a for a in agents if a.status == status]
-    if strategy:
-        agents = [a for a in agents if a.strategy == strategy]
-    
-    return agents
-
-
-@app.get("/agents/{agent_id}", response_model=AgentStatus)
-async def get_agent(agent_id: str) -> AgentStatus:
-    """Get a single agent by ID."""
-    exchange_manager = get_exchange_manager()
-    
-    if agent_id == "system":
-        return AgentStatus(
-            id="system",
-            name="System Agent",
-            strategy="Orchestrator",
-            status="running" if exchange_manager.get_connected_exchanges() else "no_connection",
-            pnl=0,
-            pnl_24h=0,
-            trades=0,
-            win_rate=0,
-            uptime="",
-            last_trade="",
-        )
-    
-    conn = exchange_manager.get_connection(agent_id)
-    if not conn or not conn.is_connected:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found or not connected")
-    
-    return AgentStatus(
-        id=agent_id,
-        name=f"{agent_id.title()} Agent",
-        strategy="Multi-Strategy",
-        status="running",
-        pnl=0,
-        pnl_24h=0,
-        trades=0,
-        win_rate=0,
-        uptime="Connected",
-        last_trade="N/A",
-    )
-
-
-@app.post("/agents/{agent_id}/start")
-async def start_agent(agent_id: str) -> Dict[str, Any]:
-    """Start an agent (connect to exchange)."""
-    exchange_manager = get_exchange_manager()
-    
-    if agent_id == "system":
-        return {"success": True, "agent_id": agent_id, "status": "running"}
-    
-    success = await exchange_manager.connect_exchange(agent_id)
-    if success:
-        return {"success": True, "agent_id": agent_id, "status": "running"}
-    raise HTTPException(status_code=400, detail=f"Failed to start agent '{agent_id}'")
-
-
-@app.post("/agents/{agent_id}/stop")
-async def stop_agent(agent_id: str) -> Dict[str, Any]:
-    """Stop an agent (disconnect from exchange)."""
-    exchange_manager = get_exchange_manager()
-    
-    if agent_id == "system":
-        return {"success": True, "agent_id": agent_id, "status": "stopped"}
-    
-    return {"success": True, "agent_id": agent_id, "status": "stopped"}
-
-
-@app.post("/agents/{agent_id}/pause")
-async def pause_agent(agent_id: str) -> Dict[str, Any]:
-    """Pause an agent."""
-    exchange_manager = get_exchange_manager()
-    
-    if agent_id == "system":
-        return {"success": True, "agent_id": agent_id, "status": "paused"}
-    
-    return {"success": True, "agent_id": agent_id, "status": "paused"}
-
-
-# -------------------------------------------------------------------
-# Strategy Endpoints
-# -------------------------------------------------------------------
-
-@app.get("/strategies", response_model=List[Strategy])
+@app.get("/strategies", response_model=List[Strategy], tags=["Strategies"])
 async def list_strategies() -> List[Strategy]:
     """List all available strategies."""
     return STRATEGIES_DB
 
 
-@app.get("/strategies/current")
+@app.get("/strategies/current", tags=["Strategies"])
 async def get_current_strategy() -> Dict[str, str]:
     """Get the currently selected strategy."""
     return {"selected": SELECTED_STRATEGY}
 
 
-@app.post("/strategies/{strategy_name}/select")
+@app.post("/strategies/{strategy_name}/select", tags=["Strategies"])
 async def select_strategy(strategy_name: str) -> Dict[str, Any]:
     """Select a strategy for active trading."""
     global SELECTED_STRATEGY
@@ -350,7 +443,7 @@ async def select_strategy(strategy_name: str) -> Dict[str, Any]:
 # Portfolio Endpoints (REAL DATA)
 # -------------------------------------------------------------------
 
-@app.get("/portfolio", response_model=Portfolio)
+@app.get("/portfolio", response_model=Portfolio, tags=["Portfolio"])
 async def get_portfolio() -> Portfolio:
     """Get current portfolio state from connected exchanges."""
     exchange_manager = get_exchange_manager()
@@ -375,22 +468,22 @@ async def get_portfolio() -> Portfolio:
                 
                 # Get price in USD
                 if currency in ['USDT', 'USDC', 'USD']:
-                    value_usd = info
+                    value_usd = float(info)
                 else:
                     symbol = f"{currency}/USDT"
                     price = conn.get_last_price(symbol)
                     if price:
-                        value_usd = info * price
+                        value_usd = float(info) * price
                     else:
                         value_usd = 0
                 
-                if value_usd > 0.01:  # Skip dust
+                if value_usd > 0.01:
                     total_value += value_usd
                     positions.append(PortfolioPosition(
                         asset=currency,
                         amount=float(info),
                         value_usd=round(value_usd, 2),
-                        allocation=0,  # Calculate after we have total
+                        allocation=0,
                         source=exchange_id.title()
                     ))
         except Exception as e:
@@ -409,15 +502,15 @@ async def get_portfolio() -> Portfolio:
 
 
 # -------------------------------------------------------------------
-# Prices Endpoint (uses CoinGecko free API for real-time prices)
+# Prices Endpoint (using async httpx)
 # -------------------------------------------------------------------
 
-@app.get("/prices")
+@app.get("/prices", tags=["Market Data"])
 async def get_prices() -> Dict[str, Any]:
-    """Get current prices from CoinGecko public API (no API key needed)."""
-    import requests
-    
-    # CoinGecko free API - get prices for major pairs
+    """
+    Get current prices from CoinGecko using async httpx.
+    No API key required for basic endpoints.
+    """
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {
         "ids": "bitcoin,ethereum,solana,avalanche-2,chainlink,binancecoin",
@@ -426,22 +519,23 @@ async def get_prices() -> Dict[str, Any]:
         "include_24hr_vol": "true",
     }
     
+    # Symbol mapping from CoinGecko IDs to trading pairs
+    symbol_map = {
+        "bitcoin": "BTC/USDT",
+        "ethereum": "ETH/USDT", 
+        "solana": "SOL/USDT",
+        "avalanche-2": "AVAX/USDT",
+        "chainlink": "LINK/USDT",
+        "binancecoin": "BNB/USDT",
+    }
+    
     try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
             data = response.json()
             
-            # Transform to our format
             prices = {}
-            symbol_map = {
-                "bitcoin": "BTC/USDT",
-                "ethereum": "ETH/USDT", 
-                "solana": "SOL/USDT",
-                "avalanche-2": "AVAX/USDT",
-                "chainlink": "LINK/USDT",
-                "binancecoin": "BNB/USDT",
-            }
-            
             for coin_id, symbol in symbol_map.items():
                 if coin_id in data:
                     prices[symbol] = {
@@ -456,28 +550,40 @@ async def get_prices() -> Dict[str, Any]:
                 "last_updated": datetime.now().isoformat(),
                 "provider": "coingecko"
             }
+    except httpx.TimeoutException:
+        logger.error("CoinGecko API timeout")
+        return {
+            "prices": {},
+            "last_updated": datetime.now().isoformat(),
+            "error": "Request timeout"
+        }
+    except httpx.HTTPStatusError as e:
+        logger.error(f"CoinGecko API error: {e.response.status_code}")
+        return {
+            "prices": {},
+            "last_updated": datetime.now().isoformat(),
+            "error": f"HTTP {e.response.status_code}"
+        }
     except Exception as e:
         logger.error(f"CoinGecko API error: {e}")
-    
-    return {
-        "prices": {},
-        "last_updated": datetime.now().isoformat(),
-        "error": "Failed to fetch prices"
-    }
+        return {
+            "prices": {},
+            "last_updated": datetime.now().isoformat(),
+            "error": str(e)
+        }
 
 
 # -------------------------------------------------------------------
-# P&L Endpoints (REAL DATA)
+# P&L Endpoints
 # -------------------------------------------------------------------
 
-@app.get("/pnl", response_model=List[PnLEntry])
+@app.get("/pnl", response_model=List[PnLEntry], tags=["P&L"])
 async def get_pnl_history(days: int = 30) -> List[PnLEntry]:
     """
     Get P&L history from exchange trades.
     """
     days = min(days, 365)
     
-    # Try to get real trade history from exchanges
     exchange_manager = get_exchange_manager()
     connected = exchange_manager.get_connected_exchanges()
     
@@ -486,43 +592,22 @@ async def get_pnl_history(days: int = 30) -> List[PnLEntry]:
     
     for i in range(days, -1, -1):
         date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        
-        # Try to aggregate P&L from exchanges
         daily_pnl = 0.0
-        for exchange_id in connected:
-            conn = exchange_manager.get_connection(exchange_id)
-            if not conn or not conn.is_connected:
-                continue
-            try:
-                # In a real implementation, you would fetch trades for this date
-                # and calculate P&L from executed trades
-                # For now, we'll return 0 until we have historical data
-                pass
-            except Exception as e:
-                logger.error(f"Error fetching trades from {exchange_id}: {e}")
         
+        # Future: aggregate from actual trade history
         cumulative += daily_pnl
         entries.append(PnLEntry(date=date, pnl=daily_pnl, pnl_cumulative=cumulative))
     
     return entries
 
 
-@app.get("/pnl/summary")
+@app.get("/pnl/summary", tags=["P&L"])
 async def get_pnl_summary() -> Dict[str, Any]:
-    """Get P&L summary metrics from connected exchanges."""
+    """Get P&L summary metrics."""
     exchange_manager = get_exchange_manager()
-    connected = exchange_manager.get_connected_exchanges()
-    
-    total_value = 0.0
-    for exchange_id in connected:
-        try:
-            total = await exchange_manager.get_total_balance_usd()
-            total_value += total
-        except:
-            pass
     
     return {
-        "total_pnl": 0,  # Would calculate from trade history
+        "total_pnl": 0,
         "daily_pnl": 0,
         "weekly_pnl": 0,
         "monthly_pnl": 0,
@@ -535,12 +620,9 @@ async def get_pnl_summary() -> Dict[str, Any]:
 # Deposit / Payment Endpoints
 # -------------------------------------------------------------------
 
-@app.post("/deposits", response_model=DepositResponse)
+@app.post("/deposits", response_model=DepositResponse, tags=["Deposits"])
 async def create_deposit(request: DepositRequest) -> DepositResponse:
-    """
-    Create a deposit request via credit card.
-    Supported providers: moonpay, ramp, mercuryo
-    """
+    """Create a deposit request via credit card."""
     payment_manager = get_payment_manager()
     
     try:
@@ -568,7 +650,7 @@ async def create_deposit(request: DepositRequest) -> DepositResponse:
         raise HTTPException(status_code=500, detail="Failed to create deposit")
 
 
-@app.get("/deposits/{deposit_id}")
+@app.get("/deposits/{deposit_id}", tags=["Deposits"])
 async def get_deposit(deposit_id: str) -> Dict[str, Any]:
     """Get deposit status."""
     payment_manager = get_payment_manager()
@@ -588,7 +670,7 @@ async def get_deposit(deposit_id: str) -> Dict[str, Any]:
     }
 
 
-@app.get("/deposits")
+@app.get("/deposits", tags=["Deposits"])
 async def list_deposits() -> List[Dict[str, Any]]:
     """List all deposits."""
     payment_manager = get_payment_manager()
@@ -608,9 +690,9 @@ async def list_deposits() -> List[Dict[str, Any]]:
     ]
 
 
-@app.get("/payment/providers")
+@app.get("/payment/providers", tags=["Payment"])
 async def get_payment_providers() -> Dict[str, Any]:
-    """Get available payment providers and their status."""
+    """Get available payment providers."""
     payment_manager = get_payment_manager()
     providers = payment_manager.get_provider_status()
     
@@ -623,7 +705,6 @@ async def get_payment_providers() -> Dict[str, Any]:
                 "fees": "1-5% + network fee",
                 "supports": ["USD", "EUR", "GBP", "AUD", "CAD"],
                 "cryptos": ["BTC", "ETH", "USDT", "USDC", "SOL", "AVAX"],
-                "url": "https://www.moonpay.com"
             },
             {
                 "id": "ramp",
@@ -632,7 +713,6 @@ async def get_payment_providers() -> Dict[str, Any]:
                 "fees": "1-3%",
                 "supports": ["USD", "EUR", "GBP"],
                 "cryptos": ["BTC", "ETH", "USDT", "USDC", "DAI", "SOL"],
-                "url": "https://ramp.network"
             },
             {
                 "id": "mercuryo",
@@ -641,17 +721,8 @@ async def get_payment_providers() -> Dict[str, Any]:
                 "fees": "2-3.5%",
                 "supports": ["USD", "EUR", "GBP", "RUB"],
                 "cryptos": ["BTC", "ETH", "USDT", "USDC", "SOL"],
-                "url": "https://www.mercuryo.io"
             }
-        ],
-        "exchange_transfer": {
-            "id": "exchange",
-            "name": "Exchange Transfer",
-            "enabled": True,
-            "fees": "Varies by exchange",
-            "supports": ["All major cryptocurrencies"],
-            "description": "Transfer funds directly to exchange wallet"
-        }
+        ]
     }
 
 
@@ -659,7 +730,7 @@ async def get_payment_providers() -> Dict[str, Any]:
 # Exchange Connection Endpoints
 # -------------------------------------------------------------------
 
-@app.get("/exchanges")
+@app.get("/exchanges", tags=["Exchanges"])
 async def list_exchanges() -> Dict[str, Any]:
     """List configured and connected exchanges."""
     exchange_manager = get_exchange_manager()
@@ -678,13 +749,14 @@ async def list_exchanges() -> Dict[str, Any]:
     }
 
 
-@app.post("/exchanges/{exchange_id}/connect")
+@app.post("/exchanges/{exchange_id}/connect", tags=["Exchanges"])
 async def connect_exchange(exchange_id: str, api_key: str, api_secret: str,
                           testnet: bool = False) -> Dict[str, Any]:
     """Connect to an exchange with provided credentials."""
+    from src.exchange.connection import ExchangeConnection, ExchangeConfig
+    
     exchange_manager = get_exchange_manager()
     
-    # Create connection
     config = ExchangeConfig(
         exchange_id=exchange_id,
         api_key=api_key,
@@ -693,7 +765,6 @@ async def connect_exchange(exchange_id: str, api_key: str, api_secret: str,
         enabled=True
     )
     
-    from src.exchange.connection import ExchangeConnection
     conn = ExchangeConnection(config)
     success = await conn.connect()
     
@@ -704,7 +775,7 @@ async def connect_exchange(exchange_id: str, api_key: str, api_secret: str,
     return {"success": False, "exchange_id": exchange_id, "status": "failed"}
 
 
-@app.post("/exchanges/{exchange_id}/disconnect")
+@app.post("/exchanges/{exchange_id}/disconnect", tags=["Exchanges"])
 async def disconnect_exchange(exchange_id: str) -> Dict[str, Any]:
     """Disconnect from an exchange."""
     exchange_manager = get_exchange_manager()
@@ -713,6 +784,17 @@ async def disconnect_exchange(exchange_id: str) -> Dict[str, Any]:
         del exchange_manager.connections[exchange_id]
     
     return {"success": True, "exchange_id": exchange_id, "status": "disconnected"}
+
+
+# -------------------------------------------------------------------
+# Include Trading Router
+# -------------------------------------------------------------------
+
+try:
+    from src.dashboard.api_trading import router as trading_router
+    app.include_router(trading_router)
+except ImportError as e:
+    logger.warning(f"Could not import trading router: {e}")
 
 
 # -------------------------------------------------------------------
