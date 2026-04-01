@@ -796,6 +796,12 @@ try:
 except ImportError as e:
     logger.warning(f"Could not import trading router: {e}")
 
+try:
+    from src.simulation.api_demo import router as demo_router
+    app.include_router(demo_router)
+except ImportError as e:
+    logger.warning(f"Could not import demo router: {e}")
+
 
 # -------------------------------------------------------------------
 # Run with uvicorn
