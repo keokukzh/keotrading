@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { Sidebar, Header } from '@/components/layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { PriceChart } from '@/components/charts/PriceChart'
 import { PortfolioPie } from '@/components/charts/PortfolioPie'
 import { OrderBook } from '@/components/trading/OrderBook'
@@ -21,6 +23,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   AlertCircle,
+  ExternalLink,
 } from 'lucide-react'
 
 // Demo data for demo mode
@@ -43,15 +46,25 @@ const DEMO_PRICES: Prices = {
   'AVAX/USDT': { last: 35.67, bid: 35.65, ask: 35.70, volume: 234567890, change_24h: 3.21, high: 36.00, low: 34.50, source: 'binance' },
 }
 
+// Real live prices from CoinGecko
+const LIVE_PRICES: Prices = {
+  'BTC/USDT': { last: 0, bid: 0, ask: 0, volume: 0, change_24h: 0, high: 0, low: 0, source: 'coingecko' },
+  'ETH/USDT': { last: 0, bid: 0, ask: 0, volume: 0, change_24h: 0, high: 0, low: 0, source: 'coingecko' },
+  'SOL/USDT': { last: 0, bid: 0, ask: 0, volume: 0, change_24h: 0, high: 0, low: 0, source: 'coingecko' },
+  'AVAX/USDT': { last: 0, bid: 0, ask: 0, volume: 0, change_24h: 0, high: 0, low: 0, source: 'coingecko' },
+}
+
 export default function DashboardPage() {
   const { mode } = useModeStore()
   const isLiveMode = mode === 'live'
+  const router = useRouter()
   
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
   const [prices, setPrices] = useState<Prices>({})
   const [selectedSymbol, setSelectedSymbol] = useState('BTC/USDT')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [exchangesConnected, setExchangesConnected] = useState(false)
 
   // WebSocket for live data
   const { isConnected } = useWebSocket({
@@ -75,6 +88,7 @@ export default function DashboardPage() {
       // Demo mode - use demo data
       setPortfolio(DEMO_PORTFOLIO)
       setPrices(DEMO_PRICES)
+      setExchangesConnected(false)
       setIsLoading(false)
       return
     }
@@ -84,16 +98,57 @@ export default function DashboardPage() {
     setError(null)
     
     try {
-      const response = await fetch('/api/portfolio')
-      if (!response.ok) throw new Error('Failed to fetch portfolio')
-      const data = await response.json()
-      setPortfolio(data)
+      // Check if exchanges are connected
+      const exchangeRes = await fetch('/api/exchanges')
+      let hasConnectedExchanges = false
+      if (exchangeRes.ok) {
+        const exchangeData = await exchangeRes.json()
+        hasConnectedExchanges = exchangeData.connected && exchangeData.connected.length > 0
+        setExchangesConnected(hasConnectedExchanges)
+      }
       
-      // Also fetch prices
-      const pricesRes = await fetch('/api/prices')
-      if (pricesRes.ok) {
-        const pricesData = await pricesRes.json()
-        setPrices(pricesData)
+      // Fetch portfolio (only if exchanges are connected)
+      if (hasConnectedExchanges) {
+        const portfolioRes = await fetch('/api/portfolio')
+        if (portfolioRes.ok) {
+          const portfolioData = await portfolioRes.json()
+          setPortfolio(portfolioData)
+        }
+      } else {
+        // No exchanges - show empty portfolio
+        setPortfolio({
+          positions: [],
+          total_value: 0,
+          last_updated: new Date().toISOString(),
+        })
+      }
+      
+      // Fetch real prices from CoinGecko (always works without exchanges)
+      try {
+        const pricesRes = await fetch('/api/prices')
+        if (pricesRes.ok) {
+          const pricesData = await pricesRes.json()
+          if (pricesData.prices) {
+            // Transform CoinGecko prices to our format
+            const transformedPrices: Prices = {}
+            for (const [symbol, data] of Object.entries(pricesData.prices)) {
+              const priceData = data as { last: number; change_24h: number; volume_24h?: number }
+              transformedPrices[symbol] = {
+                last: priceData.last,
+                bid: priceData.last, // No bid/ask from CoinGecko free tier
+                ask: priceData.last,
+                volume: priceData.volume_24h || 0,
+                change_24h: priceData.change_24h,
+                high: priceData.last * 1.02, // Approximate
+                low: priceData.last * 0.98,
+                source: 'coingecko'
+              }
+            }
+            setPrices(transformedPrices)
+          }
+        }
+      } catch (priceErr) {
+        console.error('Error fetching prices:', priceErr)
       }
     } catch (err) {
       console.error('Error fetching data:', err)
@@ -117,7 +172,7 @@ export default function DashboardPage() {
   }, [fetchData, isLiveMode])
 
   // Use demo prices if live prices not available
-  const displayPrices = Object.keys(prices).length > 0 ? prices : DEMO_PRICES
+  const displayPrices = Object.keys(prices).length > 0 ? prices : (isLiveMode ? {} : DEMO_PRICES)
   const currentPrice = displayPrices[selectedSymbol]?.last || 0
   const change24h = displayPrices[selectedSymbol]?.change_24h || 0
 
@@ -142,7 +197,7 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-2xl lg:text-3xl font-bold text-white">Dashboard</h1>
               <p className="text-[#9CA3AF] text-sm">
-                {isLiveMode ? 'Real-time trading overview' : 'Demo mode - simulated data'}
+                {isLiveMode ? 'Live mode - real market data' : 'Demo mode - simulated data'}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -166,6 +221,28 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 p-4 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444]">
               <AlertCircle size={18} />
               <span className="text-sm">{error}</span>
+            </div>
+          )}
+
+          {/* Exchange Connection Banner - Live Mode but no exchanges */}
+          {isLiveMode && !exchangesConnected && (
+            <div className="flex items-center justify-between p-4 rounded-lg bg-[#3B82F6]/10 border border-[#3B82F6]/30">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#3B82F6]/20 flex items-center justify-center">
+                  <Wallet size={20} className="text-[#3B82F6]" />
+                </div>
+                <div>
+                  <p className="text-white font-medium">Connect Exchanges for Live Trading</p>
+                  <p className="text-[#9CA3AF] text-sm">Add exchange API keys to enable real portfolio tracking and trading</p>
+                </div>
+              </div>
+              <Button
+                onClick={() => router.push('/settings')}
+                className="bg-[#3B82F6] hover:bg-[#60A5FA] text-white"
+              >
+                <ExternalLink size={16} className="mr-2" />
+                Connect Exchange
+              </Button>
             </div>
           )}
 

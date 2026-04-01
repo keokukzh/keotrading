@@ -409,6 +409,64 @@ async def get_portfolio() -> Portfolio:
 
 
 # -------------------------------------------------------------------
+# Prices Endpoint (uses CoinGecko free API for real-time prices)
+# -------------------------------------------------------------------
+
+@app.get("/prices")
+async def get_prices() -> Dict[str, Any]:
+    """Get current prices from CoinGecko public API (no API key needed)."""
+    import requests
+    
+    # CoinGecko free API - get prices for major pairs
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {
+        "ids": "bitcoin,ethereum,solana,avalanche-2,chainlink,binancecoin",
+        "vs_currencies": "usd",
+        "include_24hr_change": "true",
+        "include_24hr_vol": "true",
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Transform to our format
+            prices = {}
+            symbol_map = {
+                "bitcoin": "BTC/USDT",
+                "ethereum": "ETH/USDT", 
+                "solana": "SOL/USDT",
+                "avalanche-2": "AVAX/USDT",
+                "chainlink": "LINK/USDT",
+                "binancecoin": "BNB/USDT",
+            }
+            
+            for coin_id, symbol in symbol_map.items():
+                if coin_id in data:
+                    prices[symbol] = {
+                        "last": data[coin_id].get("usd", 0),
+                        "change_24h": data[coin_id].get("usd_24h_change", 0),
+                        "volume_24h": data[coin_id].get("usd_24h_vol", 0),
+                        "source": "coingecko"
+                    }
+            
+            return {
+                "prices": prices,
+                "last_updated": datetime.now().isoformat(),
+                "provider": "coingecko"
+            }
+    except Exception as e:
+        logger.error(f"CoinGecko API error: {e}")
+    
+    return {
+        "prices": {},
+        "last_updated": datetime.now().isoformat(),
+        "error": "Failed to fetch prices"
+    }
+
+
+# -------------------------------------------------------------------
 # P&L Endpoints (REAL DATA)
 # -------------------------------------------------------------------
 
