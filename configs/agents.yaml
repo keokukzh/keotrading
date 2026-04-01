@@ -1,0 +1,543 @@
+# KEOTrading Agent Configuration
+# All 50 agents configured for the multi-agent crypto trading system
+
+version: "1.0"
+
+# Global settings
+global:
+  max_agents: 50
+  default_health_check_interval: 30.0
+  default_max_restarts: 5
+  default_restart_delay: 5.0
+
+# Risk limits (used by RiskEnforcer)
+risk_limits:
+  max_trade_pct: 0.02          # 2% per trade
+  max_agent_exposure_pct: 0.10  # 10% per agent
+  max_portfolio_exposure: 1.0   # 100% portfolio
+  max_daily_loss_pct: 0.05      # 5% daily loss
+  max_drawdown_pct: 0.15        # 15% max drawdown
+  max_leverage: 5.0
+  initial_portfolio_value: 100000.0
+
+# Data Agents (10 agents)
+# Responsible for collecting and processing market data
+data_agents:
+  - agent_id: "data_price_1"
+    agent_type: "PriceMonitor"
+    name: "BTC/ETH Price Monitor"
+    enabled: true
+    metadata:
+      symbols: ["BTC/USDT", "ETH/USDT"]
+      exchanges: ["binance", "coinbase"]
+      interval: 1.0
+      
+  - agent_id: "data_price_2"
+    agent_type: "PriceMonitor"
+    name: "ALT Price Monitor"
+    enabled: true
+    metadata:
+      symbols: ["SOL/USDT", "AVAX/USDT", "MATIC/USDT"]
+      exchanges: ["binance"]
+      interval: 1.0
+      
+  - agent_id: "data_orderbook_1"
+    agent_type: "OrderbookAnalyzer"
+    name: "Orderbook Analyzer BTC"
+    enabled: true
+    metadata:
+      symbols: ["BTC/USDT"]
+      depth: 20
+      interval: 0.5
+      
+  - agent_id: "data_orderbook_2"
+    agent_type: "OrderbookAnalyzer"
+    name: "Orderbook Analyzer ETH"
+    enabled: true
+    metadata:
+      symbols: ["ETH/USDT"]
+      depth: 20
+      interval: 0.5
+      
+  - agent_id: "data_sentiment_1"
+    agent_type: "SentimentTracker"
+    name: "Social Sentiment Tracker"
+    enabled: true
+    metadata:
+      sources: ["twitter", "reddit", "telegram"]
+      keywords: ["BTC", "ETH", "crypto"]
+      interval: 60.0
+      
+  - agent_id: "data_sentiment_2"
+    agent_type: "SentimentTracker"
+    name: "News Sentiment Tracker"
+    enabled: true
+    metadata:
+      sources: ["news_api"]
+      keywords: ["bitcoin", "ethereum", "defi"]
+      interval: 300.0
+      
+  - agent_id: "data_volume_1"
+    agent_type: "VolumeAnalyzer"
+    name: "Volume Analyzer Major"
+    enabled: true
+    metadata:
+      symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+      timeframe: "1m"
+      interval: 5.0
+      
+  - agent_id: "data_volume_2"
+    agent_type: "VolumeAnalyzer"
+    name: "Volume Analyzer ALT"
+    enabled: true
+    metadata:
+      symbols: ["AVAX/USDT", "MATIC/USDT", "LINK/USDT"]
+      timeframe: "1m"
+      interval: 5.0
+      
+  - agent_id: "data_funding_1"
+    agent_type: "FundingRateMonitor"
+    name: "Funding Rate Monitor"
+    enabled: true
+    metadata:
+      symbols: ["BTC/USDT", "ETH/USDT"]
+      exchanges: ["binance", "bybit"]
+      interval: 300.0
+      
+  - agent_id: "data_liquidations_1"
+    agent_type: "LiquidationTracker"
+    name: "Liquidation Tracker"
+    enabled: true
+    metadata:
+      symbols: ["BTC/USDT", "ETH/USDT"]
+      interval: 10.0
+
+# Strategy Agents (25 agents)
+# Responsible for analyzing data and generating trading signals
+strategy_agents:
+  # Arbitrage strategies (5)
+  - agent_id: "strat_arb_1"
+    agent_type: "Arbitrage"
+    name: "CEX Arbitrage BTC"
+    enabled: true
+    metadata:
+      symbols: ["BTC/USDT"]
+      exchanges: ["binance", "coinbase"]
+      min_spread_pct: 0.1
+      
+  - agent_id: "strat_arb_2"
+    agent_type: "Arbitrage"
+    name: "CEX Arbitrage ETH"
+    enabled: true
+    metadata:
+      symbols: ["ETH/USDT"]
+      exchanges: ["binance", "coinbase"]
+      min_spread_pct: 0.1
+      
+  - agent_id: "strat_arb_3"
+    agent_type: "Arbitrage"
+    name: "DEX Arbitrage SOL"
+    enabled: true
+    metadata:
+      symbols: ["SOL/USDT"]
+      pools: ["raydium", "orca"]
+      min_spread_pct: 0.15
+      
+  - agent_id: "strat_arb_4"
+    agent_type: "Arbitrage"
+    name: "Triangle Arbitrage"
+    enabled: true
+    metadata:
+      pairs: ["BTC/ETH", "ETH/USDT", "BTC/USDT"]
+      min_profit_pct: 0.05
+      
+  - agent_id: "strat_arb_5"
+    agent_type: "Arbitrage"
+    name: "Cross-Exchange Arbitrage"
+    enabled: true
+    metadata:
+      symbols: ["AVAX/USDT"]
+      exchanges: ["binance", "kraken"]
+      min_spread_pct: 0.12
+      
+  # Scalping strategies (5)
+  - agent_id: "strat_scalp_1"
+    agent_type: "Scalping"
+    name: "BTC Scalper"
+    enabled: true
+    metadata:
+      symbol: "BTC/USDT"
+      timeframe: "1m"
+      target_pct: 0.05
+      stop_loss_pct: 0.02
+      
+  - agent_id: "strat_scalp_2"
+    agent_type: "Scalping"
+    name: "ETH Scalper"
+    enabled: true
+    metadata:
+      symbol: "ETH/USDT"
+      timeframe: "1m"
+      target_pct: 0.08
+      stop_loss_pct: 0.03
+      
+  - agent_id: "strat_scalp_3"
+    agent_type: "Scalping"
+    name: "SOL Scalper"
+    enabled: true
+    metadata:
+      symbol: "SOL/USDT"
+      timeframe: "1m"
+      target_pct: 0.15
+      stop_loss_pct: 0.05
+      
+  - agent_id: "strat_scalp_4"
+    agent_type: "Scalping"
+    name: "AVAX Scalper"
+    enabled: true
+    metadata:
+      symbol: "AVAX/USDT"
+      timeframe: "1m"
+      target_pct: 0.12
+      stop_loss_pct: 0.04
+      
+  - agent_id: "strat_scalp_5"
+    agent_type: "Scalping"
+    name: "Multi-Asset Scalper"
+    enabled: true
+    metadata:
+      symbols: ["LINK/USDT", "DOT/USDT"]
+      timeframe: "1m"
+      target_pct: 0.10
+      stop_loss_pct: 0.03
+      
+  # Grid strategies (5)
+  - agent_id: "strat_grid_1"
+    agent_type: "Grid"
+    name: "BTC Grid"
+    enabled: true
+    metadata:
+      symbol: "BTC/USDT"
+      grid_levels: 10
+      grid_range_pct: 2.0
+      order_size_pct: 0.01
+      
+  - agent_id: "strat_grid_2"
+    agent_type: "Grid"
+    name: "ETH Grid"
+    enabled: true
+    metadata:
+      symbol: "ETH/USDT"
+      grid_levels: 10
+      grid_range_pct: 3.0
+      order_size_pct: 0.01
+      
+  - agent_id: "strat_grid_3"
+    agent_type: "Grid"
+    name: "SOL Grid"
+    enabled: true
+    metadata:
+      symbol: "SOL/USDT"
+      grid_levels: 15
+      grid_range_pct: 5.0
+      order_size_pct: 0.005
+      
+  - agent_id: "strat_grid_4"
+    agent_type: "Grid"
+    name: "AVAX Grid"
+    enabled: true
+    metadata:
+      symbol: "AVAX/USDT"
+      grid_levels: 12
+      grid_range_pct: 4.0
+      order_size_pct: 0.008
+      
+  - agent_id: "strat_grid_5"
+    agent_type: "Grid"
+    name: "Dynamic Grid"
+    enabled: true
+    metadata:
+      symbols: ["MATIC/USDT", "LINK/USDT"]
+      grid_levels: 8
+      grid_range_pct: 6.0
+      order_size_pct: 0.01
+      
+  # Momentum strategies (10)
+  - agent_id: "strat_mom_1"
+    agent_type: "Momentum"
+    name: "BTC Momentum"
+    enabled: true
+    metadata:
+      symbol: "BTC/USDT"
+      timeframe: "15m"
+      rsi_oversold: 30
+      rsi_overbought: 70
+      position_size_pct: 0.02
+      
+  - agent_id: "strat_mom_2"
+    agent_type: "Momentum"
+    name: "ETH Momentum"
+    enabled: true
+    metadata:
+      symbol: "ETH/USDT"
+      timeframe: "15m"
+      rsi_oversold: 30
+      rsi_overbought: 70
+      position_size_pct: 0.02
+      
+  - agent_id: "strat_mom_3"
+    agent_type: "Momentum"
+    name: "SOL Momentum"
+    enabled: true
+    metadata:
+      symbol: "SOL/USDT"
+      timeframe: "1h"
+      rsi_oversold: 35
+      rsi_overbought: 65
+      position_size_pct: 0.015
+      
+  - agent_id: "strat_mom_4"
+    agent_type: "Momentum"
+    name: "AVAX Momentum"
+    enabled: true
+    metadata:
+      symbol: "AVAX/USDT"
+      timeframe: "1h"
+      rsi_oversold: 30
+      rsi_overbought: 70
+      position_size_pct: 0.015
+      
+  - agent_id: "strat_mom_5"
+    agent_type: "Momentum"
+    name: "Multi-Timeframe BTC"
+    enabled: true
+    metadata:
+      symbol: "BTC/USDT"
+      timeframes: ["1h", "4h", "1d"]
+      confirmation_count: 2
+      
+  - agent_id: "strat_mom_6"
+    agent_type: "Momentum"
+    name: "Cross-Asset Momentum"
+    enabled: true
+    metadata:
+      symbols: ["BTC/USDT", "ETH/USDT", "SPY"]
+      correlation_threshold: 0.7
+      
+  - agent_id: "strat_mom_7"
+    agent_type: "Momentum"
+    name: "Breakout Momentum"
+    enabled: true
+    metadata:
+      symbol: "BTC/USDT"
+      timeframe: "1h"
+      breakout_threshold_pct: 1.0
+      volume_confirmation: true
+      
+  - agent_id: "strat_mom_8"
+    agent_type: "Momentum"
+    name: "Trend Following"
+    enabled: true
+    metadata:
+      symbols: ["ETH/USDT", "SOL/USDT"]
+      timeframe: "4h"
+      ma_short: 20
+      ma_long: 50
+      
+  - agent_id: "strat_mom_9"
+    agent_type: "Momentum"
+    name: "Mean Reversion"
+    enabled: true
+    metadata:
+      symbol: "BTC/USDT"
+      timeframe: "1h"
+      bb_period: 20
+      bb_std: 2.0
+      
+  - agent_id: "strat_mom_10"
+    agent_type: "Momentum"
+    name: "Sentiment Momentum"
+    enabled: true
+    metadata:
+      symbols: ["BTC/USDT"]
+      sentiment_weight: 0.3
+      price_weight: 0.7
+
+# Execution Agents (10 agents)
+# Responsible for executing orders on exchanges
+execution_agents:
+  - agent_id: "exec_binance_1"
+    agent_type: "CEXExecutor"
+    name: "Binance Executor 1"
+    enabled: true
+    metadata:
+      exchange: "binance"
+      api_key_env: "BINANCE_API_KEY"
+      api_secret_env: "BINANCE_API_SECRET"
+      max_retries: 3
+      
+  - agent_id: "exec_binance_2"
+    agent_type: "CEXExecutor"
+    name: "Binance Executor 2"
+    enabled: true
+    metadata:
+      exchange: "binance"
+      api_key_env: "BINANCE_API_KEY_2"
+      api_secret_env: "BINANCE_API_SECRET_2"
+      max_retries: 3
+      
+  - agent_id: "exec_coinbase_1"
+    agent_type: "CEXExecutor"
+    name: "Coinbase Executor"
+    enabled: true
+    metadata:
+      exchange: "coinbase"
+      api_key_env: "COINBASE_API_KEY"
+      api_secret_env: "COINBASE_API_SECRET"
+      max_retries: 3
+      
+  - agent_id: "exec_kraken_1"
+    agent_type: "CEXExecutor"
+    name: "Kraken Executor"
+    enabled: true
+    metadata:
+      exchange: "kraken"
+      api_key_env: "KRAKEN_API_KEY"
+      api_secret_env: "KRAKEN_API_SECRET"
+      max_retries: 3
+      
+  - agent_id: "exec_bybit_1"
+    agent_type: "CEXExecutor"
+    name: "Bybit Executor"
+    enabled: true
+    metadata:
+      exchange: "bybit"
+      api_key_env: "BYBIT_API_KEY"
+      api_secret_env: "BYBIT_API_SECRET"
+      max_retries: 3
+      
+  - agent_id: "exec_raydium_1"
+    agent_type: "DEXExecutor"
+    name: "Raydium DEX Executor"
+    enabled: true
+    metadata:
+      chain: "solana"
+      dex: "raydium"
+      wallet_env: "SOLANA_WALLET"
+      
+  - agent_id: "exec_orca_1"
+    agent_type: "DEXExecutor"
+    name: "Orca DEX Executor"
+    enabled: true
+    metadata:
+      chain: "solana"
+      dex: "orca"
+      wallet_env: "SOLANA_WALLET"
+      
+  - agent_id: "exec_uniswap_1"
+    agent_type: "DEXExecutor"
+    name: "Uniswap Executor"
+    enabled: true
+    metadata:
+      chain: "ethereum"
+      dex: "uniswap"
+      wallet_env: "ETH_WALLET"
+      
+  - agent_id: "exec_router_1"
+    agent_type: "FlashLoanCoordinator"
+    name: "Flash Loan Coordinator"
+    enabled: true
+    metadata:
+      protocols: ["aave", "dydx"]
+      max_flash_loan_pct: 0.02
+      
+  - agent_id: "exec_aggregator_1"
+    agent_type: "OrderAggregator"
+    name: "Order Aggregator"
+    enabled: true
+    metadata:
+      split_algorithms: ["best_price", "volume_weighted"]
+      max_slippage_pct: 0.5
+
+# Risk Agents (5 agents)
+# Responsible for risk management and compliance
+risk_agents:
+  - agent_id: "risk_manager_1"
+    agent_type: "RiskManager"
+    name: "Primary Risk Manager"
+    enabled: true
+    metadata:
+      monitoring_interval: 5.0
+      breach_actions: ["cancel_orders", "close_positions"]
+      
+  - agent_id: "risk_portfolio_1"
+    agent_type: "PortfolioRebalancer"
+    name: "Portfolio Rebalancer"
+    enabled: true
+    metadata:
+      target_allocations:
+        BTC: 0.40
+        ETH: 0.30
+        SOL: 0.10
+        ALT: 0.15
+        USDC: 0.05
+      rebalance_threshold: 0.05
+      
+  - agent_id: "risk_pnl_1"
+    agent_type: "PnLTracker"
+    name: "PnL Tracker"
+    enabled: true
+    metadata:
+      tracking_interval: 60.0
+      report_interval: 3600.0
+      
+  - agent_id: "risk_compliance_1"
+    agent_type: "ComplianceMonitor"
+    name: "Compliance Monitor"
+    enabled: true
+    metadata:
+      max_positions_per_agent: 10
+      max_daily_trades: 100
+      restricted_symbols: []
+      
+  - agent_id: "risk_emergency_1"
+    agent_type: "EmergencyStop"
+    name: "Emergency Stop Monitor"
+    enabled: true
+    metadata:
+      auto_stop_conditions:
+        drawdown_pct: 0.20
+        hourly_loss_pct: 0.03
+        consecutive_errors: 10
+
+# Communication channels
+channels:
+  events: "keotrading:events"
+  trades: "keotrading:trades"
+  risk: "keotrading:risk"
+  data: "keotrading:data"
+  strategy: "keotrading:strategy"
+  system: "keotrading:system"
+  alerts: "keotrading:alerts"
+
+# Scheduled tasks
+scheduled_tasks:
+  - name: "health_check_all"
+    interval_seconds: 30.0
+    target_agent: "system"
+    message_type: "health_check"
+    
+  - name: "risk_metrics_report"
+    interval_seconds: 60.0
+    target_agent: "risk_manager_1"
+    message_type: "report_metrics"
+    
+  - name: "portfolio_rebalance_check"
+    interval_seconds: 300.0
+    target_agent: "risk_portfolio_1"
+    message_type: "check_rebalance"
+    
+  - name: "pnl_summary"
+    interval_seconds: 3600.0
+    target_agent: "risk_pnl_1"
+    message_type: "generate_summary"

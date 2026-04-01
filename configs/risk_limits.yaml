@@ -1,0 +1,72 @@
+# Risk Limits Configuration
+# These are HARD LIMITS - do not modify during trading
+
+risk_limits:
+  # Position Sizing
+  position:
+    max_per_trade_pct: 2.0      # Max 2% of portfolio per trade
+    max_per_agent_pct: 10.0      # Max 10% in single agent
+    max_per_strategy_pct: 30.0   # Max 30% in one strategy type
+    max_per_asset_pct: 40.0      # Max 40% in single asset
+    max_total_leverage: 3.0      # Max 3x leverage overall
+
+  # Stop Losses (%)
+  stop_loss:
+    scalping: 0.5
+    arbitrage: 0.3
+    grid: 5.0
+    momentum: 3.0
+
+  # Drawdown Limits
+  drawdown:
+    warning_pct: 3.0            # Alert only
+    critical_pct: 5.0           # Pause aggressive agents
+    max_pct: 8.0                # Pause ALL agents
+    catastrophic_pct: 10.0      # Full shutdown
+
+  # Time-based Limits
+  time_limits:
+    max_hold_hours: 72          # Force close after 72h
+    min_trade_interval_sec: 5   # Anti-whiplash
+    daily_trade_limit: 100      # Per agent
+
+  # Capital Management
+  capital:
+    reserve_pct: 10.0          # Keep 10% in reserve
+    profit_lock_pct: 5.0        # Lock weekly profits above this
+    reinvest_threshold: 5.0     # Only reinvest after 5% weekly gain
+
+# Alert Configuration
+alerts:
+  channels:
+    - telegram
+    - email
+
+  telegram:
+    enabled: false
+    bot_token: "YOUR_BOT_TOKEN"
+    chat_id: "YOUR_CHAT_ID"
+
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    from_addr: "alerts@example.com"
+    to_addrs:
+      - "trader@example.com"
+
+# Circuit Breakers
+circuit_breakers:
+  # Auto-pause triggers
+  pause_on:
+    - drawdown_exceeds: 5.0
+    - consecutive_losses: 5
+    - agent_error_rate: 0.3
+    - exchange_latency_ms: 5000
+
+  # Full shutdown triggers
+  shutdown_on:
+    - drawdown_exceeds: 10.0
+    - exchange_failure: true
+    - data_staleness_sec: 300
+    - unauthorized_access: true

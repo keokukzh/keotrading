@@ -1,0 +1,110 @@
+version: "3.8"
+
+services:
+  # Redis - Inter-agent communication
+  redis:
+    image: redis:7-alpine
+    container_name: keotrading-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - keotrading-network
+
+  # Prometheus - Metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: keotrading-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - keotrading-network
+
+  # Grafana - Metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: keotrading-grafana
+    restart: unless-stopped
+    ports:
+      - "3030:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - keotrading-network
+
+  # KEOTrading Orchestrator - Main application
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: keotrading-orchestrator
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # API server
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=INFO
+      - AGENT_CONFIG_PATH=/app/configs/agents.yaml
+      - MAX_AGENTS=50
+    volumes:
+      - ../src:/app/src:ro
+      - ../configs:/app/configs:ro
+      - ../logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - keotrading-network
+
+  # Optional: Redis Commander for debugging
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: keotrading-redis-commander
+    restart: unless-stopped
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - keotrading-network
+    profiles:
+      - debug
+
+networks:
+  keotrading-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

@@ -1,0 +1,91 @@
+# Exchange Configuration
+# Copy to exchanges.yaml and fill in your API keys
+
+exchanges:
+  binance:
+    enabled: true
+    api_key: "YOUR_BINANCE_API_KEY"
+    api_secret: "YOUR_BINANCE_API_SECRET"
+    testnet: false
+    trading_types:
+      - spot
+      - futures  # if enabled
+    max_position_usd: 100
+    fee_tier: 0.1  # maker fee %
+
+  kraken:
+    enabled: true
+    api_key: "YOUR_KRAKEN_API_KEY"
+    api_secret: "YOUR_KRAKEN_API_SECRET"
+    trading_types:
+      - spot
+    max_position_usd: 100
+    fee_tier: 0.14
+
+  coinbase:
+    enabled: false
+    api_key: "YOUR_COINBASE_API_KEY"
+    api_secret: "YOUR_COINBASE_API_SECRET"
+    trading_types:
+      - spot
+    max_position_usd: 50
+    fee_tier: 0.5
+
+  bybit:
+    enabled: false
+    api_key: "YOUR_BYBIT_API_KEY"
+    api_secret: "YOUR_BYBIT_API_SECRET"
+    testnet: false
+    trading_types:
+      - spot
+      - futures
+    max_position_usd: 100
+    fee_tier: 0.1
+
+# Solana / DEX Configuration
+solana:
+  enabled: true
+  rpc_url: "https://api.mainnet-beta.solana.com"
+  wallet_address: "YOUR_SOLANA_WALLET_ADDRESS"
+  wallet_private_key: "YOUR_PRIVATE_KEY"  # or use wallet adapter
+  
+  dexes:
+    raydium:
+      enabled: true
+      program_id: "RAYdzymJVTJcv9oxrMavD1mLBJ8sSc1D5qEY2vuk3w3"
+    orca:
+      enabled: true
+      program_id: "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzhuffjZ7qSJ"
+    marinade:
+      enabled: true
+      program_id: "MarBmsSgKXdrN1egZf5sqe1TMX9KJNKvTT5JiS8aBwh"
+
+  flash_loan:
+    enabled: false
+    protocols:
+      - solend
+      - jet_protocol
+    max_loan_usd: 500
+
+# Supported trading pairs
+pairs:
+  - BTC/USDT
+  - ETH/USDT
+  - SOL/USDT
+  - AVAX/USDT
+  - LINK/USDT
+  - BTC/USDC
+  - ETH/USDC
+  - SOL/USDC
+
+# Data sources
+data_sources:
+  coingecko:
+    enabled: true
+    api_key: "YOUR_COINGECKO_API_KEY"  # optional for basic
+    rate_limit: 10  # calls per minute
+
+  exchange_websockets:
+    enabled: true
+    reconnect_delay_ms: 1000
+    max_reconnects: 5

@@ -1,0 +1,123 @@
+# KEOTrading Dashboard Configuration
+# =================================
+# This file configures the dashboard UI, LLM provider, and API settings.
+
+# ---------------------------------------------------------------------------
+# Dashboard Settings
+# ---------------------------------------------------------------------------
+dashboard:
+  port: 3000                    # Streamlit dashboard port
+  api_port: 8000               # FastAPI backend port
+  host: "0.0.0.0"              # Bind address
+  title: "KEOTrading Dashboard"
+  default_refresh_interval: 30  # seconds
+
+  # UI preferences
+  ui:
+    theme: "dark"              # dark, light, system
+    currency: "USD"            # USD, EUR, BTC, ETH
+    show_pnl_in_header: true
+    enable_sound_notifications: false
+    auto_refresh_charts: true
+
+# ---------------------------------------------------------------------------
+# LLM Provider Configuration
+# ---------------------------------------------------------------------------
+llm:
+  provider: "openai"           # openai, anthropic, ollama
+  model: "gpt-4o"
+  temperature: 0.7
+  max_tokens: 2048
+  streaming: true
+  cache_responses: true
+
+  # Provider-specific settings
+  openai:
+    api_key: "${OPENAI_API_KEY}"  # Set via environment variable
+    base_url: "https://api.openai.com/v1"
+    organization: ""
+
+  anthropic:
+    api_key: "${ANTHROPIC_API_KEY}"  # Set via environment variable
+    base_url: "https://api.anthropic.com"
+    version: "2023-06-01"
+
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "llama3.3"
+    timeout: 120
+
+# ---------------------------------------------------------------------------
+# API Configuration
+# ---------------------------------------------------------------------------
+api:
+  base_url: "http://localhost:8000"
+  username: "admin"
+  password: "${API_PASSWORD}"   # Set via environment variable
+  timeout: 30                  # seconds
+  max_retries: 3
+  enable_https: false
+
+  # Rate limiting
+  rate_limit:
+    requests_per_minute: 60
+    burst: 10
+
+# ---------------------------------------------------------------------------
+# Exchange API Keys
+# ---------------------------------------------------------------------------
+exchanges:
+  binance:
+    enabled: true
+    api_key: "${BINANCE_API_KEY}"
+    secret_key: "${BINANCE_SECRET_KEY}"
+    testnet: false
+
+  bybit:
+    enabled: true
+    api_key: "${BYBIT_API_KEY}"
+    secret_key: "${BYBIT_SECRET_KEY}"
+    testnet: false
+
+  okx:
+    enabled: false
+    api_key: "${OKX_API_KEY}"
+    secret_key: "${OKX_SECRET_KEY}"
+    passphrase: "${OKX_PASSPHRASE}"
+
+  raydium:
+    enabled: true
+    rpc_url: "${RAYDIUM_RPC_URL}"
+    wallet_key: "${RAYDIUM_WALLET_KEY}"
+
+  orca:
+    enabled: true
+    rpc_url: "${ORCA_RPC_URL}"
+    wallet_key: "${ORCA_WALLET_KEY}"
+
+# ---------------------------------------------------------------------------
+# Risk Management
+# ---------------------------------------------------------------------------
+risk:
+  max_daily_loss: 1000         # USD
+  max_position_size_pct: 20    # % of portfolio
+  max_open_positions: 10
+  emergency_stop_pnl: -5000    # USD - stop all trading if reached
+  max_leverage: 3
+
+# ---------------------------------------------------------------------------
+# Agent Configuration
+# ---------------------------------------------------------------------------
+agents:
+  default_strategy: "LP Arbitrage (hzjken)"
+  max_agents: 20
+  restart_on_error: true
+  health_check_interval: 60    # seconds
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging:
+  level: "INFO"                # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/dashboard.log"
