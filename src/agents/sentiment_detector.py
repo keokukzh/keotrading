@@ -5,6 +5,7 @@ Analyzes market sentiment from Fear & Greed Index and LunarCrush social metrics.
 
 import asyncio
 import logging
+import os
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -75,7 +76,7 @@ class SentimentSignal:
             SentimentLevel.FEAR: "😰",
             SentimentLevel.NEUTRAL: "😐",
             SentimentLevel.GREED: "🤑",
-            SentimentLevel.EXTREME_GREED: "�疯狂",
+            SentimentLevel.EXTREME_GREED: "🤪",
         }.get(self.level, "❓")
         
         return f"{emoji} {self.value} - {self.level.value} ({self.confidence:.0%})"
