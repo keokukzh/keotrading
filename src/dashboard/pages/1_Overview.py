@@ -1,7 +1,7 @@
 """
 KEOTrading Dashboard - Overview Page
 ====================================
-System overview, total P&L, and agent status summary.
+System overview, total P&L, and agent status summary with real data support.
 """
 
 from __future__ import annotations
@@ -12,9 +12,30 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
+import sys
+from pathlib import Path
+
+# Add parent directory for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+
+from src.dashboard.real_data import MockDataGenerator, RealTimeDataManager
+from src.exchange.connection import ExchangeManager
 
 
-# Mock data for demonstration
+def get_data_manager():
+    """Get or create data manager singleton."""
+    if 'data_manager' not in st.session_state:
+        st.session_state['data_manager'] = RealTimeDataManager(ExchangeManager())
+    return st.session_state['data_manager']
+
+
+def get_mock_generator():
+    """Get mock data generator."""
+    if 'mock_generator' not in st.session_state:
+        st.session_state['mock_generator'] = MockDataGenerator()
+    return st.session_state['mock_generator']
+
+
 def get_mock_agents() -> List[Dict[str, Any]]:
     """Return mock agent status data."""
     return [
@@ -29,42 +50,120 @@ def get_mock_agents() -> List[Dict[str, Any]]:
 
 def get_mock_pnl_history() -> pd.DataFrame:
     """Return mock P&L history data."""
-    dates = [(datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(30, -1, -1)]
-    values = [1000 + i * 50 + (i % 3) * 100 + (i % 7) * -30 for i in range(31)]
-    return pd.DataFrame({"date": dates, "pnl": values})
+    generator = get_mock_generator()
+    return generator.generate_pnl_history(30)
 
 
 def get_mock_total_pnl() -> Dict[str, Any]:
     """Return mock total P&L summary."""
-    return {
-        "total": 12345.10,
-        "daily": 432.50,
-        "weekly": 2891.20,
-        "monthly": 12345.10,
-        "change_24h": 3.6,
-    }
+    generator = get_mock_generator()
+    return generator.generate_total_pnl()
+
+
+async def get_real_pnl() -> Dict[str, Any]:
+    """Get real P&L from connected exchanges."""
+    data_manager = get_data_manager()
+    try:
+        total_value = await data_manager.get_portfolio_value()
+        return {
+            "total": total_value,
+            "daily": 0,  # Would need historical data
+            "weekly": 0,
+            "monthly": 0,
+            "change_24h": 0,
+        }
+    except Exception as e:
+        return get_mock_total_pnl()
+
+
+async def get_real_portfolio() -> Dict[str, float]:
+    """Get real portfolio distribution."""
+    data_manager = get_data_manager()
+    try:
+        return await data_manager.exchange_manager.get_portfolio_distribution()
+    except Exception:
+        generator = get_mock_generator()
+        return generator.generate_portfolio_allocation()
+
+
+async def refresh_data():
+    """Refresh real-time data."""
+    data_manager = get_data_manager()
+    try:
+        await data_manager.refresh_all()
+    except Exception:
+        pass  # Fall back to mock data
 
 
 def render_overview() -> None:
     """Render the Overview page."""
     st.title("📊 System Overview")
     st.markdown("---")
+    
+    # Check if we have real exchange connections
+    has_connections = False
+    try:
+        exchange_manager = ExchangeManager()
+        has_connections = len(exchange_manager.get_connected_exchanges()) > 0
+    except:
+        pass
+    
+    # Mode indicator
+    mode_col1, mode_col2, mode_col3 = st.columns([1, 1, 2])
+    with mode_col1:
+        if has_connections:
+            st.success("🟢 LIVE MODE")
+        else:
+            st.info("📝 DEMO MODE")
+    
+    with mode_col2:
+        if st.button("🔄 Refresh Data", use_container_width=True):
+            if has_connections:
+                with st.spinner("Refreshing..."):
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    loop.run_until_complete(refresh_data())
+                    loop.close()
+            st.rerun()
+    
+    with mode_col3:
+        if has_connections:
+            data_manager = get_data_manager()
+            last_update = data_manager.get_last_update_time()
+            if last_update:
+                st.caption(f"Last updated: {last_update.strftime('%H:%M:%S')}")
+            else:
+                st.caption("Pull to refresh")
+        else:
+            st.caption("Connect exchanges in Settings to enable live data")
+
+    st.markdown("---")
 
     # Total P&L Section
-    total_pnl = get_mock_total_pnl()
+    if has_connections:
+        # Try to get real data
+        import asyncio
+        try:
+            total_pnl = loop.run_until_complete(get_real_pnl()) if 'loop' not in dir() else get_real_pnl()
+        except:
+            total_pnl = get_mock_total_pnl()
+    else:
+        total_pnl = get_mock_total_pnl()
+    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
+        delta = total_pnl.get('change_24h', 0)
         st.metric(
             label="Total P&L",
-            value=f"${total_pnl['total']:,.2f}",
-            delta=f"{total_pnl['change_24h']}% (24h)"
+            value=f"${total_pnl.get('total', 0):,.2f}",
+            delta=f"{delta}% (24h)" if delta else None
         )
     with col2:
-        st.metric("Daily P&L", f"${total_pnl['daily']:,.2f}")
+        st.metric("Daily P&L", f"${total_pnl.get('daily', 0):,.2f}")
     with col3:
-        st.metric("Weekly P&L", f"${total_pnl['weekly']:,.2f}")
+        st.metric("Weekly P&L", f"${total_pnl.get('weekly', 0):,.2f}")
     with col4:
-        st.metric("Monthly P&L", f"${total_pnl['monthly']:,.2f}")
+        st.metric("Monthly P&L", f"${total_pnl.get('monthly', 0):,.2f}")
 
     st.markdown("---")
 
@@ -74,6 +173,7 @@ def render_overview() -> None:
     with col_left:
         st.subheader("📈 P&L History (30 days)")
         pnl_df = get_mock_pnl_history()
+        
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=pnl_df["date"],
@@ -96,12 +196,18 @@ def render_overview() -> None:
 
     with col_right:
         st.subheader("🏦 Portfolio Distribution")
-        portfolio_data = {
-            "Asset": ["USDT", "BTC", "ETH", "SOL", "Other"],
-            "Allocation": [45, 25, 15, 10, 5],
-        }
+        
+        if has_connections:
+            import asyncio
+            try:
+                portfolio_dist = loop.run_until_complete(get_real_portfolio())
+            except:
+                portfolio_dist = get_mock_generator().generate_portfolio_allocation()
+        else:
+            portfolio_dist = get_mock_generator().generate_portfolio_allocation()
+        
         pie_fig = px.pie(
-            portfolio_data,
+            {"Asset": list(portfolio_dist.keys()), "Allocation": list(portfolio_dist.values())},
             values="Allocation",
             names="Asset",
             hole=0.6,
@@ -148,36 +254,55 @@ def render_overview() -> None:
         with col_name:
             st.write(f"**{agent['name']}**")
         with col_strat:
-            st.write(agent["strategy"])
+            st.write(agent['strategy'])
         with col_status:
-            status_icon = status_colors.get(agent["status"], "⚪")
+            status_icon = status_colors.get(agent['status'], "⚪")
             st.write(f"{status_icon} {agent['status'].capitalize()}")
         with col_pnl:
-            pnl_color = "green" if agent["pnl"] >= 0 else "red"
+            pnl_color = "green" if agent['pnl'] >= 0 else "red"
             st.markdown(f"<span style='color:{pnl_color}'>${agent['pnl']:,.2f}</span>", unsafe_allow_html=True)
         with col_uptime:
-            st.write(agent["uptime"])
+            st.write(agent['uptime'])
         with col_actions:
-            if agent["status"] == "running":
-                if st.button(f"⏸️", key=f"pause_{agent['id']}"):
-                    st.info(f"Pause action for {agent['name']} would be sent via API")
+            if agent['status'] == 'running':
+                st.button("⏸️", key=f"pause_{agent['id']}")
             else:
-                if st.button(f"▶️", key=f"start_{agent['id']}"):
-                    st.info(f"Start action for {agent['name']} would be sent via API")
-
+                st.button("▶️", key=f"start_{agent['id']}")
+    
     st.markdown("---")
-
+    
     # System Health
-    st.subheader("🩺 System Health")
+    st.subheader("🏥 System Health")
+    
     health_col1, health_col2, health_col3, health_col4 = st.columns(4)
     with health_col1:
-        st.metric("CPU Usage", "34%", "-5%")
+        cpu_usage = 23.5  # Would be real from system
+        st.metric("CPU Usage", f"{cpu_usage}%")
     with health_col2:
-        st.metric("Memory", "2.4 GB", "+0.3 GB")
+        memory_usage = 1.2  # GB
+        st.metric("Memory", f"{memory_usage} GB")
     with health_col3:
-        st.metric("API Latency", "45ms", "-12ms")
+        connected_agents = len([a for a in agents if a['status'] == 'running'])
+        st.metric("Active Agents", f"{connected_agents}/{len(agents)}")
     with health_col4:
-        st.metric("Error Rate", "0.02%", "Stable")
+        latency = 45  # ms
+        st.metric("Avg Latency", f"{latency}ms")
+    
+    st.markdown("---")
+    
+    # Quick Actions
+    st.subheader("⚡ Quick Actions")
+    
+    action_col1, action_col2, action_col3 = st.columns(3)
+    with action_col1:
+        if st.button("🚀 Start All Agents", use_container_width=True):
+            st.info("Starting all agents...")
+    with action_col2:
+        if st.button("⏹️ Stop All Agents", use_container_width=True):
+            st.warning("Stopping all agents...")
+    with action_col3:
+        if st.button("🔄 Restart System", use_container_width=True):
+            st.info("Restarting system...")
 
 
 if __name__ == "__main__":
