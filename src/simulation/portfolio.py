@@ -112,7 +112,7 @@ class VirtualPortfolio:
     Tracks positions, orders, and calculates metrics.
     """
     
-    DEFAULT_INITIAL_BALANCE = 100_000  # $100k
+    DEFAULT_INITIAL_BALANCE = 100  # €100 per agent
     
     def __init__(self, data_dir: str = "data/demo", initial_balance: float = 100_000):
         self.data_dir = Path(data_dir)
