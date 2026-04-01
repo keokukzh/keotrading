@@ -12,6 +12,7 @@ import {
   Bell,
   Menu,
   X,
+  Bot,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -19,7 +20,7 @@ import { cn } from '@/lib/utils'
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Portfolio', href: '/dashboard/portfolio', icon: Wallet },
-  { name: 'Strategies', href: '/dashboard/strategies', icon: TrendingUp },
+  { name: 'Agents', href: '/dashboard/agents', icon: Bot },
   { name: 'Deposits', href: '/deposits', icon: CreditCard },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
