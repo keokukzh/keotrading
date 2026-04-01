@@ -1,0 +1,59 @@
+# Alert Configuration
+
+# Telegram Configuration
+telegram:
+  enabled: true
+  bot_token: "YOUR_BOT_TOKEN"
+  chat_id: "YOUR_CHAT_ID"
+
+# Email Configuration
+email:
+  enabled: false
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  from_addr: "alerts@yourdomain.com"
+  to_addrs:
+    - "your@email.com"
+  username: ""
+  password: ""
+
+# Push Notifications
+push:
+  enabled: false
+  service: "ntfy"  # or "pushover"
+  ntfy_url: "https://ntfy.sh/your-topic"
+  # For pushover:
+  # app_token: "YOUR_APP_TOKEN"
+  # user_key: "YOUR_USER_KEY"
+
+# Alert Rules
+rules:
+  - name: "Trade Executed"
+    type: "trade"
+    level: "success"
+    condition: "always"
+    cooldown: 60  # seconds
+
+  - name: "Large P&L"
+    type: "pnl"
+    level: "warning"
+    condition: "pnl > 0.05"  # 5%
+    cooldown: 300
+
+  - name: "Drawdown Warning"
+    type: "risk"
+    level: "error"
+    condition: "drawdown > 0.08"  # 8%
+    cooldown: 600
+
+  - name: "Agent Error"
+    type: "agent"
+    level: "error"
+    condition: "status == error"
+    cooldown: 60
+
+  - name: "Emergency Stop"
+    type: "risk"
+    level: "critical"
+    condition: "drawdown > 0.15"  # 15%
+    cooldown: 0  # No cooldown for emergencies
