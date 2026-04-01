@@ -19,27 +19,27 @@ export function PriceChart({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }: Price
     const chart = createChart(containerRef.current, {
       layout: {
         background: { color: 'transparent' },
-        textColor: theme === 'dark' ? '#9ca3af' : '#374151',
+        textColor: '#9CA3AF',
       },
       grid: {
-        vertLines: { color: 'rgba(255,255,255,0.05)' },
-        horzLines: { color: 'rgba(255,255,255,0.05)' },
+        vertLines: { color: 'rgba(42, 42, 58, 0.5)' },
+        horzLines: { color: 'rgba(42, 42, 58, 0.5)' },
       },
       width: containerRef.current.clientWidth,
-      height: 400,
+      height: 350,
       timeScale: {
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: '#2A2A3A',
         timeVisible: true,
       },
       crosshair: {
         mode: 1,
         vertLine: {
-          color: 'rgba(255,255,255,0.2)',
+          color: 'rgba(59, 130, 246, 0.5)',
           width: 1,
           style: 2,
         },
         horzLine: {
-          color: 'rgba(255,255,255,0.2)',
+          color: 'rgba(59, 130, 246, 0.5)',
           width: 1,
           style: 2,
         },
@@ -48,12 +48,12 @@ export function PriceChart({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }: Price
 
     // Add candlestick series
     const candleSeries = chart.addCandlestickSeries({
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+      upColor: '#10B981',
+      downColor: '#EF4444',
+      borderUpColor: '#10B981',
+      borderDownColor: '#EF4444',
+      wickUpColor: '#10B981',
+      wickDownColor: '#EF4444',
     })
 
     // Generate sample data (replace with real data from API)
@@ -81,22 +81,6 @@ export function PriceChart({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }: Price
     candleSeries.setData(sampleData)
     chart.timeScale().fitContent()
 
-    // Add volume series
-    const volumeSeries = chart.addHistogramSeries({
-      color: '#26a69a',
-      priceFormat: {
-        type: 'volume',
-      },
-      priceScaleId: '',
-    })
-
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-    })
-
     chartRef.current = chart
     setChartReady(true)
 
@@ -118,9 +102,9 @@ export function PriceChart({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }: Price
   return (
     <div className="relative">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">{symbol.replace('BINANCE:', '')}</h3>
+        <h3 className="text-lg font-semibold text-white">{symbol.replace('BINANCE:', '')}</h3>
         {chartReady && (
-          <span className="text-xs text-muted-foreground">Last updated: just now</span>
+          <span className="text-xs text-[#6B7280]">Last updated: just now</span>
         )}
       </div>
       <div ref={containerRef} className="w-full rounded-lg overflow-hidden" />

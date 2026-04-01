@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Sidebar, Header } from '@/components/layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { PriceChart } from '@/components/charts/PriceChart'
 import { PortfolioPie } from '@/components/charts/PortfolioPie'
 import { OrderBook } from '@/components/trading/OrderBook'
 import { TradingForm } from '@/components/trading/TradingForm'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { formatCurrency, formatPercent } from '@/lib/utils'
-import type { Portfolio, Prices, Agent } from '@/types'
+import { useModeStore } from '@/lib/store'
+import { formatCurrency } from '@/lib/utils'
+import type { Portfolio, Prices } from '@/types'
 import {
   TrendingUp,
   TrendingDown,
@@ -20,9 +20,23 @@ import {
   RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
+  AlertCircle,
 } from 'lucide-react'
 
-const defaultPrices: Prices = {
+// Demo data for demo mode
+const DEMO_PORTFOLIO: Portfolio = {
+  positions: [
+    { asset: 'USDT', amount: 45000, value_usd: 45000, allocation: 45, source: 'Binance' },
+    { asset: 'BTC', amount: 0.85, value_usd: 35827.75, allocation: 35.8, source: 'Binance' },
+    { asset: 'ETH', amount: 8.5, value_usd: 19384.25, allocation: 19.4, source: 'Kraken' },
+    { asset: 'SOL', amount: 75, value_usd: 7372.50, allocation: 7.4, source: 'Solana' },
+    { asset: 'Other', amount: 1, value_usd: 2415.50, allocation: 2.4, source: 'Various' },
+  ],
+  total_value: 100000,
+  last_updated: new Date().toISOString(),
+}
+
+const DEMO_PRICES: Prices = {
   'BTC/USDT': { last: 42150.32, bid: 42148.50, ask: 42152.00, volume: 1234567890, change_24h: 2.45, high: 42500, low: 41800, source: 'binance' },
   'ETH/USDT': { last: 2280.45, bid: 2280.00, ask: 2281.00, volume: 987654321, change_24h: 1.82, high: 2300, low: 2250, source: 'binance' },
   'SOL/USDT': { last: 98.34, bid: 98.30, ask: 98.38, volume: 456789012, change_24h: -0.54, high: 100.00, low: 97.00, source: 'solana' },
@@ -30,55 +44,93 @@ const defaultPrices: Prices = {
 }
 
 export default function DashboardPage() {
+  const { mode } = useModeStore()
+  const isLiveMode = mode === 'live'
+  
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
-  const [prices, setPrices] = useState<Prices>(defaultPrices)
-  const [agents, setAgents] = useState<Agent[]>([])
+  const [prices, setPrices] = useState<Prices>({})
   const [selectedSymbol, setSelectedSymbol] = useState('BTC/USDT')
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
+  // WebSocket for live data
   const { isConnected } = useWebSocket({
     channel: 'global',
     onPortfolioUpdate: (data) => {
-      setPortfolio(data)
-      setIsLoading(false)
+      if (isLiveMode) {
+        setPortfolio(data)
+        setIsLoading(false)
+      }
     },
-    onPriceUpdate: (data) => setPrices(data),
-    onAgentUpdate: (data) => setAgents(data),
+    onPriceUpdate: (data) => {
+      if (isLiveMode) {
+        setPrices(data)
+      }
+    },
   })
 
-  // Fallback demo data
-  useEffect(() => {
-    if (!portfolio) {
-      setPortfolio({
-        positions: [
-          { asset: 'USDT', amount: 45000, value_usd: 45000, allocation: 45, source: 'Binance' },
-          { asset: 'BTC', amount: 0.85, value_usd: 35827.75, allocation: 35.8, source: 'Binance' },
-          { asset: 'ETH', amount: 8.5, value_usd: 19384.25, allocation: 19.4, source: 'Kraken' },
-          { asset: 'SOL', amount: 75, value_usd: 7372.50, allocation: 7.4, source: 'Solana' },
-          { asset: 'Other', amount: 1, value_usd: 2415.50, allocation: 2.4, source: 'Various' },
-        ],
-        total_value: 100000,
-        last_updated: new Date().toISOString(),
-      })
+  // Fetch data based on mode
+  const fetchData = useCallback(async () => {
+    if (!isLiveMode) {
+      // Demo mode - use demo data
+      setPortfolio(DEMO_PORTFOLIO)
+      setPrices(DEMO_PRICES)
+      setIsLoading(false)
+      return
+    }
+
+    // Live mode - fetch from API
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      const response = await fetch('/api/portfolio')
+      if (!response.ok) throw new Error('Failed to fetch portfolio')
+      const data = await response.json()
+      setPortfolio(data)
+      
+      // Also fetch prices
+      const pricesRes = await fetch('/api/prices')
+      if (pricesRes.ok) {
+        const pricesData = await pricesRes.json()
+        setPrices(pricesData)
+      }
+    } catch (err) {
+      console.error('Error fetching data:', err)
+      setError('Failed to connect to exchange')
+      // Fallback to demo data
+      setPortfolio(DEMO_PORTFOLIO)
+      setPrices(DEMO_PRICES)
+    } finally {
       setIsLoading(false)
     }
-  }, [portfolio])
+  }, [isLiveMode])
 
-  const totalValue = portfolio?.total_value || 0
-  const change24h = 2.45
+  useEffect(() => {
+    fetchData()
+    
+    // Refresh every 30 seconds in live mode
+    if (isLiveMode) {
+      const interval = setInterval(fetchData, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [fetchData, isLiveMode])
+
+  // Use demo prices if live prices not available
+  const displayPrices = Object.keys(prices).length > 0 ? prices : DEMO_PRICES
+  const currentPrice = displayPrices[selectedSymbol]?.last || 0
+  const change24h = displayPrices[selectedSymbol]?.change_24h || 0
 
   const portfolioChartData = portfolio?.positions.map((p) => ({
     name: p.asset,
     value: p.value_usd,
-    color: p.asset === 'USDT' ? '#22c55e' : p.asset === 'BTC' ? '#f59e0b' : '#3b82f6',
+    color: p.asset === 'USDT' ? '#10B981' : p.asset === 'BTC' ? '#F59E0B' : '#3B82F6',
   })) || []
-
-  const currentPrice = prices[selectedSymbol]?.last || 0
 
   const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT']
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-[#0A0A0F]">
       <Sidebar />
 
       <main className="flex-1 lg:ml-64">
@@ -88,87 +140,104 @@ export default function DashboardPage() {
           {/* Page Header */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold">Dashboard</h1>
-              <p className="text-muted-foreground text-sm">Real-time trading overview</p>
+              <h1 className="text-2xl lg:text-3xl font-bold text-white">Dashboard</h1>
+              <p className="text-[#9CA3AF] text-sm">
+                {isLiveMode ? 'Real-time trading overview' : 'Demo mode - simulated data'}
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span
-                className={`flex items-center gap-1 text-sm ${
-                  isConnected ? 'text-green-500' : 'text-yellow-500'
-                }`}
+            <div className="flex items-center gap-3">
+              {isLiveMode && (
+                <span className="flex items-center gap-1 text-sm text-[#10B981]">
+                  <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
+                  Live Data
+                </span>
+              )}
+              <button
+                onClick={fetchData}
+                className="p-2 rounded-lg border border-[#2A2A3A] hover:bg-[#1A1A24] transition-colors"
               >
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    isConnected ? 'bg-green-500' : 'bg-yellow-500'
-                  }`}
-                />
-                {isConnected ? 'Live' : 'Demo Mode'}
-              </span>
-              <Button variant="outline" size="sm">
-                <RefreshCw size={14} className="mr-2" />
-                Refresh
-              </Button>
+                <RefreshCw size={16} className="text-[#9CA3AF]" />
+              </button>
             </div>
           </div>
 
+          {/* Error Banner */}
+          {error && isLiveMode && (
+            <div className="flex items-center gap-2 p-4 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444]">
+              <AlertCircle size={18} />
+              <span className="text-sm">{error}</span>
+            </div>
+          )}
+
           {/* Top Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs lg:text-sm text-muted-foreground">Portfolio Value</p>
-                    <p className="text-lg lg:text-xl font-bold">
-                      {isLoading ? '...' : formatCurrency(totalValue)}
+                    <p className="text-xs text-[#9CA3AF]">Portfolio Value</p>
+                    <p className="text-lg lg:text-xl font-bold text-white tabular-nums">
+                      {isLoading ? '...' : formatCurrency(portfolio?.total_value || 0)}
                     </p>
                   </div>
-                  <Wallet className="w-8 h-8 text-primary opacity-20" />
+                  <div className="w-10 h-10 rounded-full bg-[#3B82F6]/10 flex items-center justify-center">
+                    <Wallet size={18} className="text-[#3B82F6]" />
+                  </div>
                 </div>
-                <div className="mt-1 flex items-center gap-1 text-xs">
+                <div className="mt-2 flex items-center gap-1 text-xs">
                   {change24h >= 0 ? (
-                    <TrendingUp className="w-3 h-3 text-green-500" />
+                    <TrendingUp size={12} className="text-[#10B981]" />
                   ) : (
-                    <TrendingDown className="w-3 h-3 text-red-500" />
+                    <TrendingDown size={12} className="text-[#EF4444]" />
                   )}
-                  <span className={change24h >= 0 ? 'text-green-500' : 'text-red-500'}>
-                    {formatPercent(change24h)}
+                  <span className={change24h >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}>
+                    {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
                   </span>
+                  <span className="text-[#6B7280]">24h</span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs lg:text-sm text-muted-foreground">Daily P&L</p>
-                    <p className="text-lg lg:text-xl font-bold text-green-500">+$1,234.56</p>
+                    <p className="text-xs text-[#9CA3AF]">Daily P&L</p>
+                    <p className="text-lg lg:text-xl font-bold text-[#10B981] tabular-nums">
+                      {isLoading ? '...' : '+$1,234.56'}
+                    </p>
                   </div>
-                  <DollarSign className="w-8 h-8 text-green-500 opacity-20" />
+                  <div className="w-10 h-10 rounded-full bg-[#10B981]/10 flex items-center justify-center">
+                    <DollarSign size={18} className="text-[#10B981]" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs lg:text-sm text-muted-foreground">Active Agents</p>
-                    <p className="text-lg lg:text-xl font-bold">{agents.length || 5}</p>
+                    <p className="text-xs text-[#9CA3AF]">Active Agents</p>
+                    <p className="text-lg lg:text-xl font-bold text-white">5</p>
                   </div>
-                  <Activity className="w-8 h-8 text-blue-500 opacity-20" />
+                  <div className="w-10 h-10 rounded-full bg-[#8B5CF6]/10 flex items-center justify-center">
+                    <Activity size={18} className="text-[#8B5CF6]" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs lg:text-sm text-muted-foreground">Win Rate</p>
-                    <p className="text-lg lg:text-xl font-bold">68.5%</p>
+                    <p className="text-xs text-[#9CA3AF]">Win Rate</p>
+                    <p className="text-lg lg:text-xl font-bold text-white">68.5%</p>
                   </div>
-                  <RefreshCw className="w-8 h-8 text-purple-500 opacity-20" />
+                  <div className="w-10 h-10 rounded-full bg-[#06B6D4]/10 flex items-center justify-center">
+                    <RefreshCw size={18} className="text-[#06B6D4]" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -179,19 +248,27 @@ export default function DashboardPage() {
             {/* Left Column - Chart + Market */}
             <div className="xl:col-span-3 space-y-4">
               {/* Symbol Selector + Price Chart */}
-              <Card>
-                <CardHeader className="pb-2">
+              <Card className="border-[#2A2A3A] bg-[#12121A]">
+                <CardHeader className="pb-2 border-b border-[#2A2A3A]">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
-                    <CardTitle>{selectedSymbol}</CardTitle>
+                    <div className="flex items-center gap-3">
+                      <CardTitle className="text-white">{selectedSymbol}</CardTitle>
+                      <span className={`text-lg font-bold tabular-nums ${change24h >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                        ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className={`text-sm ${change24h >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                        {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+                      </span>
+                    </div>
                     <div className="flex gap-1">
                       {symbols.map((symbol) => (
                         <button
                           key={symbol}
                           onClick={() => setSelectedSymbol(symbol)}
-                          className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                          className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
                             selectedSymbol === symbol
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted text-muted-foreground hover:text-foreground'
+                              ? 'bg-[#3B82F6] text-white'
+                              : 'bg-[#1A1A24] text-[#9CA3AF] hover:text-white'
                           }`}
                         >
                           {symbol.replace('/USDT', '')}
@@ -200,48 +277,43 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="flex items-baseline gap-4 mb-4">
-                    <span className="text-3xl font-bold">
-                      ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </span>
-                    <span className={`text-lg ${(prices[selectedSymbol]?.change_24h || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {(prices[selectedSymbol]?.change_24h || 0) >= 0 ? '+' : ''}
-                      {(prices[selectedSymbol]?.change_24h || 0).toFixed(2)}%
-                    </span>
-                  </div>
+                <CardContent className="pt-4">
                   <PriceChart symbol={`BINANCE:${selectedSymbol.replace('/', '')}`} />
                 </CardContent>
               </Card>
 
               {/* Market Overview */}
-              <Card>
+              <Card className="border-[#2A2A3A] bg-[#12121A]">
                 <CardHeader>
-                  <CardTitle>Market Overview</CardTitle>
+                  <CardTitle className="text-white text-lg">Market Overview</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {symbols.map((symbol) => {
-                      const data = prices[symbol]
+                      const data = displayPrices[symbol]
                       const change = data?.change_24h || 0
                       return (
                         <button
                           key={symbol}
                           onClick={() => setSelectedSymbol(symbol)}
-                          className={`p-3 rounded-lg border text-left transition-colors hover:bg-accent ${
-                            selectedSymbol === symbol ? 'border-primary' : ''
+                          className={`p-3 rounded-lg border text-left transition-all hover:border-[#3B82F6] ${
+                            selectedSymbol === symbol 
+                              ? 'border-[#3B82F6] bg-[#3B82F6]/5' 
+                              : 'border-[#2A2A3A] bg-[#0A0A0F]'
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium">{symbol}</span>
-                            <span className={`text-xs ${change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              {change >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                            </span>
+                            <span className="text-sm font-medium text-white">{symbol}</span>
+                            {change >= 0 ? (
+                              <ArrowUpRight size={14} className="text-[#10B981]" />
+                            ) : (
+                              <ArrowDownRight size={14} className="text-[#EF4444]" />
+                            )}
                           </div>
-                          <p className="text-sm font-bold">
+                          <p className="text-sm font-bold text-white tabular-nums">
                             ${data?.last?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '—'}
                           </p>
-                          <p className={`text-xs ${change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          <p className={`text-xs ${change >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                             {change >= 0 ? '+' : ''}{change.toFixed(2)}%
                           </p>
                         </button>
@@ -253,38 +325,38 @@ export default function DashboardPage() {
 
               {/* Portfolio + Agents */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card>
+                <Card className="border-[#2A2A3A] bg-[#12121A]">
                   <CardHeader>
-                    <CardTitle>Portfolio Distribution</CardTitle>
+                    <CardTitle className="text-white text-lg">Portfolio Distribution</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <PortfolioPie data={portfolioChartData} />
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-[#2A2A3A] bg-[#12121A]">
                   <CardHeader>
-                    <CardTitle>Quick Assets</CardTitle>
+                    <CardTitle className="text-white text-lg">Quick Assets</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
                       {portfolio?.positions.slice(0, 5).map((position) => (
                         <div
                           key={position.asset}
-                          className="flex items-center justify-between py-2 border-b last:border-0"
+                          className="flex items-center justify-between py-2 border-b border-[#2A2A3A] last:border-0"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                              <span className="text-xs font-bold">{position.asset[0]}</span>
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3B82F6] to-[#06B6D4] flex items-center justify-center">
+                              <span className="text-xs font-bold text-white">{position.asset[0]}</span>
                             </div>
                             <div>
-                              <p className="font-medium text-sm">{position.asset}</p>
-                              <p className="text-xs text-muted-foreground">{position.source}</p>
+                              <p className="font-medium text-white text-sm">{position.asset}</p>
+                              <p className="text-xs text-[#6B7280]">{position.source}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium text-sm">{formatCurrency(position.value_usd)}</p>
-                            <p className="text-xs text-muted-foreground">{position.allocation.toFixed(1)}%</p>
+                            <p className="font-medium text-white text-sm tabular-nums">{formatCurrency(position.value_usd)}</p>
+                            <p className="text-xs text-[#6B7280]">{position.allocation.toFixed(1)}%</p>
                           </div>
                         </div>
                       ))}
@@ -298,7 +370,7 @@ export default function DashboardPage() {
             <div className="xl:col-span-1">
               <div className="grid grid-cols-1 gap-4">
                 {/* Order Book */}
-                <Card>
+                <Card className="border-[#2A2A3A] bg-[#12121A]">
                   <CardContent className="p-4">
                     <OrderBook
                       symbol={selectedSymbol}
@@ -309,7 +381,7 @@ export default function DashboardPage() {
                 </Card>
 
                 {/* Trading Form */}
-                <Card>
+                <Card className="border-[#2A2A3A] bg-[#12121A]">
                   <CardContent className="p-4">
                     <TradingForm
                       symbol={selectedSymbol}

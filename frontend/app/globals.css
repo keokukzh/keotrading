@@ -4,19 +4,22 @@
 
 @layer base {
   :root {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
-    --primary: 210 100% 50%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 215 20% 10%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 215 20% 15%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 210 100% 50%;
-    --accent-foreground: 210 40% 98%;
-    --border: 215 20% 20%;
+    --background: 225 15% 4%;        /* #0A0A0F - Deep OLED black */
+    --foreground: 0 0% 100%;          /* #FFFFFF */
+    --card: 225 15% 7%;               /* #12121A */
+    --card-foreground: 0 0% 100%;
+    --primary: 217 91% 60%;           /* #3B82F6 - Electric Blue */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 225 15% 10%;          /* #1A1A24 */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 225 15% 15%;             /* #24242F */
+    --muted-foreground: 220 9% 61%;    /* #9CA3AF */
+    --accent: 187 100% 50%;           /* #06B6D4 - Cyan */
+    --accent-foreground: 0 0% 100%;
+    --border: 240 7% 18%;             /* #2A2A3A */
+    --input: 240 7% 18%;
+    --destructive: 0 84% 60%;         /* #EF4444 */
+    --destructive-foreground: 0 0% 100%;
     --radius: 0.5rem;
   }
 }
@@ -25,31 +28,131 @@
   * {
     @apply border-border;
   }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 3px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
   }
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Trading specific styles */
+@layer components {
+  /* Card */
+  .card-trading {
+    @apply rounded-xl border border-[#2A2A3A] bg-[#12121A];
+  }
+  
+  /* Price colors */
+  .price-up {
+    @apply text-[#10B981];
+  }
+  
+  .price-down {
+    @apply text-[#EF4444];
+  }
+  
+  /* Status indicators */
+  .status-live {
+    @apply relative;
+  }
+  
+  .status-live::before {
+    content: '';
+    @apply absolute w-2 h-2 rounded-full bg-[#10B981];
+    animation: pulse 2s infinite;
+  }
+  
+  /* Glass effect */
+  .glass {
+    @apply backdrop-blur-xl bg-white/5 border border-white/10;
+  }
+  
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-[#3B82F6] to-[#06B6D4] bg-clip-text text-transparent;
+  }
+  
+  /* Glow effects */
+  .glow-green {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+  }
+  
+  .glow-red {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+  }
+  
+  .glow-blue {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  }
 }
 
-::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
+/* Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 4px;
+@keyframes slideUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
 }
 
 /* Trading chart container */
 .chart-container {
   @apply w-full h-full;
+}
+
+/* Number formatting for financial data */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
