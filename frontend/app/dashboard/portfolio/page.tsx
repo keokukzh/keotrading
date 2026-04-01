@@ -213,7 +213,7 @@ export default function PortfolioPage() {
                           {formatCurrency(position.value_usd / position.amount)}
                         </td>
                         <td className="py-4 text-right">
-                          {position.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                          {position.amount.toLocaleString('en-US', { maximumFractionDigits: 6 })}
                         </td>
                         <td className="py-4 text-right font-medium">
                           {formatCurrency(position.value_usd)}

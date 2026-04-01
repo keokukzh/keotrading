@@ -33,7 +33,7 @@ const DEMO_PORTFOLIO: Portfolio = {
     { asset: 'Other', amount: 1, value_usd: 2415.50, allocation: 2.4, source: 'Various' },
   ],
   total_value: 100000,
-  last_updated: new Date().toISOString(),
+  last_updated: '2026-04-01T12:00:00.000Z',
 }
 
 const DEMO_PRICES: Prices = {
@@ -254,7 +254,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-3">
                       <CardTitle className="text-white">{selectedSymbol}</CardTitle>
                       <span className={`text-lg font-bold tabular-nums ${change24h >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                        ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        ${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </span>
                       <span className={`text-sm ${change24h >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                         {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
@@ -311,7 +311,7 @@ export default function DashboardPage() {
                             )}
                           </div>
                           <p className="text-sm font-bold text-white tabular-nums">
-                            ${data?.last?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '—'}
+                            ${data?.last?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '—'}
                           </p>
                           <p className={`text-xs ${change >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                             {change >= 0 ? '+' : ''}{change.toFixed(2)}%
