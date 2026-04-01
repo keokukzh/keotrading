@@ -1,60 +1,77 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sidebar, Header } from '@/components/layout'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { useModeStore } from '@/lib/store'
 import {
   Key,
   CheckCircle,
   XCircle,
   Plus,
-  Trash2,
   CreditCard,
   Shield,
+  RefreshCw,
 } from 'lucide-react'
 
-const exchanges = [
-  { id: 'binance', name: 'Binance', connected: true, testnet: false },
-  { id: 'kraken', name: 'Kraken', connected: false, testnet: false },
-  { id: 'bybit', name: 'Bybit', connected: false, testnet: false },
-  { id: 'coinbase', name: 'Coinbase', connected: false, testnet: false },
-]
-
 export default function SettingsPage() {
+  const { mode } = useModeStore()
   const [activeTab, setActiveTab] = useState<'exchanges' | 'deposits' | 'api' | 'risk'>('exchanges')
+  const [exchanges, setExchanges] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    fetchExchanges()
+  }, [mode])
+
+  const fetchExchanges = async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/exchanges')
+      if (res.ok) {
+        const data = await res.json()
+        setExchanges(data.configured || [])
+      }
+    } catch (err) {
+      console.error('Error fetching exchanges:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const tabs = [
+    { id: 'exchanges', label: 'Exchanges', icon: Key },
+    { id: 'deposits', label: 'Deposits', icon: CreditCard },
+    { id: 'api', label: 'API Keys', icon: Shield },
+    { id: 'risk', label: 'Risk', icon: Shield },
+  ]
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-[#0A0A0F]">
       <Sidebar />
 
       <main className="flex-1 lg:ml-64">
         <Header />
 
-        <div className="p-6 space-y-6">
+        <div className="p-4 lg:p-6 space-y-6">
           <div>
-            <h1 className="text-3xl font-bold">Settings</h1>
-            <p className="text-muted-foreground">Manage your exchange connections and preferences</p>
+            <h1 className="text-2xl lg:text-3xl font-bold text-white">Settings</h1>
+            <p className="text-[#9CA3AF]">Manage your exchange connections and preferences</p>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-2 border-b">
-            {[
-              { id: 'exchanges', label: 'Exchanges', icon: Key },
-              { id: 'deposits', label: 'Deposits', icon: CreditCard },
-              { id: 'api', label: 'API Keys', icon: Shield },
-              { id: 'risk', label: 'Risk Limits', icon: Shield },
-            ].map((tab) => (
+          <div className="flex gap-2 border-b border-[#2A2A3A]">
+            {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as typeof activeTab)}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                    ? 'border-[#3B82F6] text-[#3B82F6]'
+                    : 'border-transparent text-[#9CA3AF] hover:text-white'
                 }`}
               >
                 <tab.icon size={16} />
@@ -63,79 +80,120 @@ export default function SettingsPage() {
             ))}
           </div>
 
-          {/* Exchange Connections */}
+          {/* Exchanges Tab */}
           {activeTab === 'exchanges' && (
             <div className="space-y-4">
-              <Card>
+              <Card className="border-[#2A2A3A] bg-[#12121A]">
                 <CardHeader>
-                  <CardTitle>Exchange Connections</CardTitle>
-                  <CardDescription>
-                    Connect your exchange accounts to enable trading
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-white">Exchange Connections</CardTitle>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={fetchExchanges}
+                      className="border-[#2A2A3A] text-white hover:bg-[#1A1A24]"
+                    >
+                      <RefreshCw size={14} className="mr-2" />
+                      Refresh
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {exchanges.map((exchange) => (
-                    <div
-                      key={exchange.id}
-                      className="flex items-center justify-between p-4 rounded-lg border"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <span className="text-sm font-bold">{exchange.name[0]}</span>
-                        </div>
-                        <div>
-                          <p className="font-medium">{exchange.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {exchange.connected ? 'Connected' : 'Not connected'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {exchange.connected ? (
-                          <Badge variant="success">Connected</Badge>
-                        ) : (
-                          <Badge variant="outline">Disconnected</Badge>
-                        )}
-                        <Button variant="outline" size="sm">
-                          {exchange.connected ? 'Disconnect' : 'Connect'}
-                        </Button>
-                      </div>
+                  {isLoading ? (
+                    <div className="text-center py-4 text-[#9CA3AF]">Loading...</div>
+                  ) : exchanges.length === 0 ? (
+                    <div className="text-center py-4 text-[#9CA3AF]">
+                      No exchanges configured. Add your exchange API keys below.
                     </div>
-                  ))}
+                  ) : (
+                    exchanges.map((exchange) => (
+                      <div
+                        key={exchange.id}
+                        className="flex items-center justify-between p-4 rounded-lg border border-[#2A2A3A]"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-full bg-[#3B82F6]/10 flex items-center justify-center">
+                            <span className="text-sm font-bold text-[#3B82F6]">
+                              {exchange.id?.[0]?.toUpperCase() || '?'}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-white">{exchange.id?.toUpperCase()}</p>
+                            <p className="text-xs text-[#6B7280]">
+                              {exchange.connected ? 'Connected' : 'Not connected'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {exchange.connected ? (
+                            <Badge variant="success">Connected</Badge>
+                          ) : (
+                            <Badge variant="outline">Disconnected</Badge>
+                          )}
+                          <Button variant="outline" size="sm" className="border-[#2A2A3A] text-white hover:bg-[#1A1A24]">
+                            Configure
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
 
-                  <Button variant="outline" className="w-full">
-                    <Plus size={16} className="mr-2" />
-                    Add Exchange
-                  </Button>
+                  <div className="pt-4 border-t border-[#2A2A3A]">
+                    <h4 className="text-sm font-medium text-white mb-3">Add New Exchange</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Input
+                        placeholder="API Key"
+                        type="password"
+                        className="bg-[#0A0A0F] border-[#2A2A3A] text-white"
+                      />
+                      <Input
+                        placeholder="API Secret"
+                        type="password"
+                        className="bg-[#0A0A0F] border-[#2A2A3A] text-white"
+                      />
+                    </div>
+                    <Button className="mt-3 bg-[#3B82F6] hover:bg-[#60A5FA] text-white">
+                      <Plus size={16} className="mr-2" />
+                      Add Exchange
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-[#2A2A3A] bg-[#12121A]">
                 <CardHeader>
-                  <CardTitle>Connection Status</CardTitle>
+                  <CardTitle className="text-white">Connection Status</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4 md:grid-cols-3">
-                    <div className="p-4 rounded-lg border">
+                    <div className="p-4 rounded-lg border border-[#2A2A3A]">
                       <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                        <span className="font-medium">1 Connected</span>
+                        <CheckCircle className="w-5 h-5 text-[#10B981]" />
+                        <span className="font-medium text-white">System Online</span>
                       </div>
-                      <p className="text-sm text-muted-foreground">Binance</p>
+                      <p className="text-sm text-[#6B7280]">All systems operational</p>
                     </div>
-                    <div className="p-4 rounded-lg border">
+                    <div className="p-4 rounded-lg border border-[#2A2A3A]">
                       <div className="flex items-center gap-2 mb-2">
-                        <XCircle className="w-5 h-5 text-muted-foreground" />
-                        <span className="font-medium">3 Disconnected</span>
+                        <CheckCircle className="w-5 h-5 text-[#10B981]" />
+                        <span className="font-medium text-white">{exchanges.filter(e => e.connected).length} Connected</span>
                       </div>
-                      <p className="text-sm text-muted-foreground">Kraken, Bybit, Coinbase</p>
+                      <p className="text-sm text-[#6B7280]">
+                        {exchanges.filter(e => e.connected).length > 0 
+                          ? exchanges.filter(e => e.connected).map(e => e.id).join(', ') 
+                          : 'No exchanges connected'}
+                      </p>
                     </div>
-                    <div className="p-4 rounded-lg border">
+                    <div className="p-4 rounded-lg border border-[#2A2A3A]">
                       <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                        <span className="font-medium">System Online</span>
+                        <XCircle className="w-5 h-5 text-[#F59E0B]" />
+                        <span className="font-medium text-white">{exchanges.filter(e => !e.connected).length} Disconnected</span>
                       </div>
-                      <p className="text-sm text-muted-foreground">All systems operational</p>
+                      <p className="text-sm text-[#6B7280]">
+                        {exchanges.filter(e => !e.connected).length > 0 
+                          ? exchanges.filter(e => !e.connected).map(e => e.id).join(', ') 
+                          : 'All connected'}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -143,140 +201,79 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* Deposits */}
+          {/* Deposits Tab */}
           {activeTab === 'deposits' && (
-            <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Add Funds</CardTitle>
-                  <CardDescription>
-                    Deposit funds via credit/debit card or bank transfer
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <button className="p-6 rounded-lg border-2 border-primary bg-primary/5 hover:bg-primary/10 transition-colors">
-                      <CreditCard className="w-8 h-8 mb-2 text-primary" />
-                      <p className="font-medium">Credit Card</p>
-                      <p className="text-sm text-muted-foreground">MoonPay, Ramp</p>
-                      <p className="text-xs text-muted-foreground mt-1">1-5% fee</p>
-                    </button>
-                    <button className="p-6 rounded-lg border hover:bg-accent transition-colors">
-                      <Plus className="w-8 h-8 mb-2" />
-                      <p className="font-medium">Bank Transfer</p>
-                      <p className="text-sm text-muted-foreground">SEPA, SWIFT</p>
-                      <p className="text-xs text-muted-foreground mt-1">1-3 days</p>
-                    </button>
-                    <button className="p-6 rounded-lg border hover:bg-accent transition-colors">
-                      <Key className="w-8 h-8 mb-2" />
-                      <p className="font-medium">Exchange Transfer</p>
-                      <p className="text-sm text-muted-foreground">Direct deposit</p>
-                      <p className="text-xs text-muted-foreground mt-1">Network fee only</p>
-                    </button>
-                  </div>
-
-                  <div className="p-4 rounded-lg border bg-muted/50">
-                    <h4 className="font-medium mb-2">Quick Deposit</h4>
-                    <div className="flex gap-2 mb-4">
-                      {[100, 500, 1000, 5000].map((amount) => (
-                        <Button key={amount} variant="outline" size="sm">
-                          ${amount}
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Input type="number" placeholder="Amount in USD" defaultValue={100} />
-                      <Select
-                        options={[
-                          { value: 'USDT', label: 'USDT' },
-                          { value: 'BTC', label: 'BTC' },
-                          { value: 'ETH', label: 'ETH' },
-                        ]}
-                      />
-                    </div>
-                    <Button className="w-full mt-4">Continue to Payment</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
+              <CardHeader>
+                <CardTitle className="text-white">Deposit Funds</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-[#9CA3AF] mb-4">
+                  Add funds via credit card or bank transfer to start trading.
+                </p>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <button className="p-6 rounded-lg border-2 border-[#3B82F6] bg-[#3B82F6]/5 hover:bg-[#3B82F6]/10 transition-colors">
+                    <CreditCard className="w-8 h-8 mb-2 text-[#3B82F6]" />
+                    <p className="font-medium text-white">Credit Card</p>
+                    <p className="text-sm text-[#6B7280]">MoonPay, Ramp</p>
+                    <p className="text-xs text-[#F59E0B] mt-1">1-5% fee</p>
+                  </button>
+                  <button className="p-6 rounded-lg border border-[#2A2A3A] hover:bg-[#1A1A24] transition-colors">
+                    <Plus className="w-8 h-8 mb-2 text-[#9CA3AF]" />
+                    <p className="font-medium text-white">Bank Transfer</p>
+                    <p className="text-sm text-[#6B7280]">SEPA, SWIFT</p>
+                    <p className="text-xs text-[#6B7280] mt-1">1-3 days</p>
+                  </button>
+                  <button className="p-6 rounded-lg border border-[#2A2A3A] hover:bg-[#1A1A24] transition-colors">
+                    <Key className="w-8 h-8 mb-2 text-[#9CA3AF]" />
+                    <p className="font-medium text-white">Exchange Transfer</p>
+                    <p className="text-sm text-[#6B7280]">Direct deposit</p>
+                    <p className="text-xs text-[#6B7280] mt-1">Network fee only</p>
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
-          {/* API Keys */}
+          {/* API Keys Tab */}
           {activeTab === 'api' && (
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardHeader>
-                <CardTitle>API Key Management</CardTitle>
-                <CardDescription>
-                  Manage API keys for external services and trading bots
-                </CardDescription>
+                <CardTitle className="text-white">API Key Management</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="p-4 rounded-lg border bg-muted/50">
-                  <h4 className="font-medium mb-2">OpenAI API Key</h4>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Required for LLM-powered features
-                  </p>
+                <div className="p-4 rounded-lg border border-[#2A2A3A]">
+                  <h4 className="font-medium text-white mb-2">OpenAI API Key</h4>
+                  <p className="text-sm text-[#6B7280] mb-4">Required for LLM-powered features</p>
                   <div className="flex gap-2">
-                    <Input type="password" placeholder="sk-..." className="flex-1" />
-                    <Button variant="outline">Save</Button>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-muted/50">
-                  <h4 className="font-medium mb-2">TradingView API Key</h4>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Optional - for advanced charting features
-                  </p>
-                  <div className="flex gap-2">
-                    <Input type="password" placeholder="Your API key" className="flex-1" />
-                    <Button variant="outline">Save</Button>
+                    <Input type="password" placeholder="sk-..." className="flex-1 bg-[#0A0A0F] border-[#2A2A3A] text-white" />
+                    <Button variant="outline" className="border-[#2A2A3A] text-white hover:bg-[#1A1A24]">Save</Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Risk Limits */}
+          {/* Risk Tab */}
           {activeTab === 'risk' && (
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardHeader>
-                <CardTitle>Risk Management</CardTitle>
-                <CardDescription>
-                  Configure risk limits to protect your capital
-                </CardDescription>
+                <CardTitle className="text-white">Risk Management</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="text-sm font-medium mb-2 block">Max Daily Loss</label>
-                    <Input type="number" defaultValue={1000} />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Stop all trading if daily loss exceeds this amount
-                    </p>
+                    <label className="text-sm text-[#9CA3AF] mb-2 block">Max Daily Loss</label>
+                    <Input type="number" defaultValue={1000} className="bg-[#0A0A0F] border-[#2A2A3A] text-white" />
+                    <p className="text-xs text-[#6B7280] mt-1">Stop all trading if daily loss exceeds this amount</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium mb-2 block">Max Position Size</label>
-                    <Input type="number" defaultValue={20} />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Maximum position size as % of portfolio
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Max Open Positions</label>
-                    <Input type="number" defaultValue={10} />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Maximum number of concurrent positions
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Emergency Stop</label>
-                    <Input type="number" defaultValue={-5000} />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Stop trading if portfolio falls below this value
-                    </p>
+                    <label className="text-sm text-[#9CA3AF] mb-2 block">Max Position Size</label>
+                    <Input type="number" defaultValue={20} className="bg-[#0A0A0F] border-[#2A2A3A] text-white" />
+                    <p className="text-xs text-[#6B7280] mt-1">Maximum position size as % of portfolio</p>
                   </div>
                 </div>
-                <Button>Save Risk Settings</Button>
+                <Button className="bg-[#3B82F6] hover:bg-[#60A5FA] text-white">Save Risk Settings</Button>
               </CardContent>
             </Card>
           )}

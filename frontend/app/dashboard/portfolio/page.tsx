@@ -1,272 +1,253 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sidebar, Header } from '@/components/layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { useModeStore } from '@/lib/store'
 import { formatCurrency, formatPercent } from '@/lib/utils'
+import type { Portfolio } from '@/types'
 import {
   Wallet,
   TrendingUp,
   TrendingDown,
-  ArrowUpRight,
-  ArrowDownRight,
   RefreshCw,
-  Download,
-  Filter,
+  ExternalLink,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
-// Demo positions
-const positions = [
-  { asset: 'USDT', amount: 45000, value_usd: 45000, allocation: 45, source: 'Binance', pnl: 0, pnl_pct: 0 },
-  { asset: 'BTC', amount: 0.85, value_usd: 35827.75, allocation: 35.8, source: 'Binance', pnl: 1234.50, pnl_pct: 3.57 },
-  { asset: 'ETH', amount: 8.5, value_usd: 19384.25, allocation: 19.4, source: 'Kraken', pnl: -234.20, pnl_pct: -1.19 },
-  { asset: 'SOL', amount: 75, value_usd: 7372.50, allocation: 7.4, source: 'Solana', pnl: 892.30, pnl_pct: 13.78 },
-  { asset: 'AVAX', amount: 120, value_usd: 4280.40, allocation: 4.3, source: 'Binance', pnl: 156.80, pnl_pct: 3.80 },
-  { asset: 'LINK', amount: 200, value_usd: 2960.00, allocation: 3.0, source: 'Coinbase', pnl: 89.40, pnl_pct: 3.11 },
-  { asset: 'Other', amount: 1, value_usd: 3175.10, allocation: 3.2, source: 'Various', pnl: 45.20, pnl_pct: 1.44 },
-]
-
-const pnlHistory = [
-  { date: '2024-01-01', value: 98200 },
-  { date: '2024-01-02', value: 98500 },
-  { date: '2024-01-03', value: 97200 },
-  { date: '2024-01-04', value: 98900 },
-  { date: '2024-01-05', value: 100100 },
-  { date: '2024-01-06', value: 99800 },
-  { date: '2024-01-07', value: 100500 },
-  { date: '2024-01-08', value: 100300 },
-  { date: '2024-01-09', value: 100700 },
-  { date: '2024-01-10', value: 101000 },
-]
+// Demo data
+const DEMO_PORTFOLIO: Portfolio = {
+  positions: [
+    { asset: 'USDT', amount: 45000, value_usd: 45000, allocation: 45, source: 'Binance' },
+    { asset: 'BTC', amount: 0.85, value_usd: 35827.75, allocation: 35.8, source: 'Binance' },
+    { asset: 'ETH', amount: 8.5, value_usd: 19384.25, allocation: 19.4, source: 'Kraken' },
+    { asset: 'SOL', amount: 75, value_usd: 7372.50, allocation: 7.4, source: 'Solana' },
+    { asset: 'Other', amount: 1, value_usd: 2415.50, allocation: 2.4, source: 'Various' },
+  ],
+  total_value: 100000,
+  last_updated: new Date().toISOString(),
+}
 
 export default function PortfolioPage() {
-  const [sortBy, setSortBy] = useState<'value' | 'pnl' | 'allocation'>('value')
-  const [filter, setFilter] = useState<'all' | 'profit' | 'loss'>('all')
+  const { mode } = useModeStore()
+  const isLiveMode = mode === 'live'
+  const router = useRouter()
+  
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [exchangesConnected, setExchangesConnected] = useState(false)
 
-  const totalValue = positions.reduce((sum, p) => sum + p.value_usd, 0)
-  const totalPnl = positions.reduce((sum, p) => sum + p.pnl, 0)
-  const totalPnlPct = (totalPnl / (totalValue - totalPnl)) * 100
+  useEffect(() => {
+    fetchPortfolio()
+  }, [isLiveMode])
 
-  const filteredPositions = positions
-    .filter((p) => {
-      if (filter === 'profit') return p.pnl > 0
-      if (filter === 'loss') return p.pnl < 0
-      return true
-    })
-    .sort((a, b) => {
-      if (sortBy === 'value') return b.value_usd - a.value_usd
-      if (sortBy === 'pnl') return b.pnl - a.pnl
-      return b.allocation - a.allocation
-    })
+  const fetchPortfolio = async () => {
+    setIsLoading(true)
+    
+    if (!isLiveMode) {
+      setPortfolio(DEMO_PORTFOLIO)
+      setExchangesConnected(false)
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      // Check exchanges
+      const exchangeRes = await fetch('/api/exchanges')
+      if (exchangeRes.ok) {
+        const data = await exchangeRes.json()
+        setExchangesConnected(data.connected?.length > 0)
+      }
+
+      // Fetch portfolio
+      const res = await fetch('/api/portfolio')
+      if (res.ok) {
+        const data = await res.json()
+        setPortfolio(data)
+      }
+    } catch (err) {
+      console.error('Error fetching portfolio:', err)
+      setPortfolio(DEMO_PORTFOLIO)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const positions = portfolio?.positions || []
+  const totalValue = portfolio?.total_value || 0
+  const totalPnl = positions.reduce((sum, p) => sum + (p as any).pnl || 0, 0)
+  const totalPnlPct = totalValue > 0 ? (totalPnl / totalValue) * 100 : 0
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-[#0A0A0F]">
       <Sidebar />
 
       <main className="flex-1 lg:ml-64">
         <Header />
 
-        <div className="p-6 space-y-6">
+        <div className="p-4 lg:p-6 space-y-6">
           {/* Page Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold">Portfolio</h1>
-              <p className="text-muted-foreground">Manage your crypto assets</p>
+              <h1 className="text-2xl lg:text-3xl font-bold text-white">Portfolio</h1>
+              <p className="text-[#9CA3AF]">
+                {isLiveMode ? 'Live portfolio - real assets' : 'Demo portfolio - simulated data'}
+              </p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={fetchPortfolio}
+                className="border-[#2A2A3A] text-white hover:bg-[#1A1A24]"
+              >
                 <RefreshCw size={16} className="mr-2" />
-                Sync
-              </Button>
-              <Button variant="outline" size="sm">
-                <Download size={16} className="mr-2" />
-                Export
+                Refresh
               </Button>
             </div>
           </div>
 
+          {/* Connect Exchange Banner */}
+          {isLiveMode && !exchangesConnected && (
+            <div className="flex items-center justify-between p-4 rounded-lg bg-[#3B82F6]/10 border border-[#3B82F6]/30">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#3B82F6]/20 flex items-center justify-center">
+                  <Wallet size={20} className="text-[#3B82F6]" />
+                </div>
+                <div>
+                  <p className="text-white font-medium">No Exchanges Connected</p>
+                  <p className="text-[#9CA3AF] text-sm">Connect exchanges to see your real portfolio</p>
+                </div>
+              </div>
+              <Button
+                onClick={() => router.push('/settings')}
+                className="bg-[#3B82F6] hover:bg-[#60A5FA] text-white"
+              >
+                <ExternalLink size={16} className="mr-2" />
+                Connect
+              </Button>
+            </div>
+          )}
+
           {/* Summary Cards */}
           <div className="grid gap-4 md:grid-cols-3">
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Total Value</p>
-                    <p className="text-3xl font-bold">{formatCurrency(totalValue)}</p>
+                    <p className="text-sm text-[#9CA3AF]">Total Value</p>
+                    <p className="text-2xl font-bold text-white">
+                      {isLoading ? '...' : formatCurrency(totalValue)}
+                    </p>
                   </div>
-                  <div className="p-3 bg-primary/10 rounded-full">
-                    <Wallet className="w-6 h-6 text-primary" />
+                  <div className="p-3 bg-[#3B82F6]/10 rounded-full">
+                    <Wallet size={20} className="text-[#3B82F6]" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Total P&L</p>
-                    <p className={`text-3xl font-bold ${totalPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    <p className="text-sm text-[#9CA3AF]">Total P&L</p>
+                    <p className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                       {totalPnl >= 0 ? '+' : ''}{formatCurrency(totalPnl)}
                     </p>
                   </div>
-                  <div className={`p-3 rounded-full ${totalPnl >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
+                  <div className={`p-3 rounded-full ${totalPnl >= 0 ? 'bg-[#10B981]/10' : 'bg-[#EF4444]/10'}`}>
                     {totalPnl >= 0 ? (
-                      <TrendingUp className="w-6 h-6 text-green-500" />
+                      <TrendingUp size={20} className="text-[#10B981]" />
                     ) : (
-                      <TrendingDown className="w-6 h-6 text-red-500" />
+                      <TrendingDown size={20} className="text-[#EF4444]" />
                     )}
                   </div>
                 </div>
-                <div className="mt-2 flex items-center gap-1 text-sm">
-                  <Badge variant={totalPnl >= 0 ? 'success' : 'destructive'}>
-                    {formatPercent(totalPnlPct)}
-                  </Badge>
-                  <span className="text-muted-foreground">all time</span>
-                </div>
+                <Badge variant={totalPnlPct >= 0 ? 'success' : 'destructive'} className="mt-2">
+                  {formatPercent(totalPnlPct)}
+                </Badge>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-[#2A2A3A] bg-[#12121A]">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Assets</p>
-                    <p className="text-3xl font-bold">{positions.length}</p>
+                    <p className="text-sm text-[#9CA3AF]">Assets</p>
+                    <p className="text-2xl font-bold text-white">{positions.length}</p>
                   </div>
-                  <div className="p-3 bg-blue-500/10 rounded-full">
-                    <Wallet className="w-6 h-6 text-blue-500" />
+                  <div className="p-3 bg-[#8B5CF6]/10 rounded-full">
+                    <Wallet size={20} className="text-[#8B5CF6]" />
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Across {new Set(positions.map(p => p.source)).size} exchanges
-                </p>
               </CardContent>
             </Card>
           </div>
 
           {/* Positions Table */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Positions</CardTitle>
-              <div className="flex gap-2">
-                <div className="flex items-center gap-2 border rounded-md p-1">
-                  <button
-                    onClick={() => setFilter('all')}
-                    className={`px-3 py-1 text-xs rounded ${filter === 'all' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => setFilter('profit')}
-                    className={`px-3 py-1 text-xs rounded ${filter === 'profit' ? 'bg-green-500 text-white' : 'text-muted-foreground'}`}
-                  >
-                    Profit
-                  </button>
-                  <button
-                    onClick={() => setFilter('loss')}
-                    className={`px-3 py-1 text-xs rounded ${filter === 'loss' ? 'bg-red-500 text-white' : 'text-muted-foreground'}`}
-                  >
-                    Loss
-                  </button>
-                </div>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                  className="text-sm border rounded-md px-2 py-1 bg-background"
-                >
-                  <option value="value">Sort by Value</option>
-                  <option value="pnl">Sort by P&L</option>
-                  <option value="allocation">Sort by Allocation</option>
-                </select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-left text-sm text-muted-foreground border-b">
-                      <th className="pb-3 font-medium">Asset</th>
-                      <th className="pb-3 font-medium text-right">Price</th>
-                      <th className="pb-3 font-medium text-right">Amount</th>
-                      <th className="pb-3 font-medium text-right">Value</th>
-                      <th className="pb-3 font-medium text-right">Allocation</th>
-                      <th className="pb-3 font-medium text-right">P&L</th>
-                      <th className="pb-3 font-medium text-right">Source</th>
-                      <th className="pb-3 font-medium"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPositions.map((position) => (
-                      <tr key={position.asset} className="border-b last:border-0">
-                        <td className="py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <span className="text-sm font-bold">{position.asset[0]}</span>
-                            </div>
-                            <span className="font-medium">{position.asset}</span>
-                          </div>
-                        </td>
-                        <td className="py-4 text-right">
-                          {formatCurrency(position.value_usd / position.amount)}
-                        </td>
-                        <td className="py-4 text-right">
-                          {position.amount.toLocaleString('en-US', { maximumFractionDigits: 6 })}
-                        </td>
-                        <td className="py-4 text-right font-medium">
-                          {formatCurrency(position.value_usd)}
-                        </td>
-                        <td className="py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-16 h-2 rounded-full bg-muted">
-                              <div
-                                className="h-full rounded-full bg-primary"
-                                style={{ width: `${position.allocation}%` }}
-                              />
-                            </div>
-                            <span className="text-sm w-12 text-right">{position.allocation.toFixed(1)}%</span>
-                          </div>
-                        </td>
-                        <td className="py-4 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {position.pnl >= 0 ? (
-                              <ArrowUpRight className="w-4 h-4 text-green-500" />
-                            ) : (
-                              <ArrowDownRight className="w-4 h-4 text-red-500" />
-                            )}
-                            <span className={position.pnl >= 0 ? 'text-green-500' : 'text-red-500'}>
-                              {position.pnl >= 0 ? '+' : ''}{formatCurrency(position.pnl)}
-                            </span>
-                            <Badge variant={position.pnl >= 0 ? 'success' : 'destructive'} className="ml-2">
-                              {formatPercent(position.pnl_pct)}
-                            </Badge>
-                          </div>
-                        </td>
-                        <td className="py-4 text-right text-sm text-muted-foreground">
-                          {position.source}
-                        </td>
-                        <td className="py-4 text-right">
-                          <Button variant="ghost" size="sm">Trade</Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* P&L Chart Placeholder */}
-          <Card>
+          <Card className="border-[#2A2A3A] bg-[#12121A]">
             <CardHeader>
-              <CardTitle>Portfolio History</CardTitle>
+              <CardTitle className="text-white">Positions</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                <p>Chart coming soon - connect exchanges to see real data</p>
-              </div>
+              {positions.length === 0 ? (
+                <div className="text-center py-8 text-[#9CA3AF]">
+                  {isLiveMode ? 'No positions found' : 'No demo positions'}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-sm text-[#6B7280] border-b border-[#2A2A3A]">
+                        <th className="pb-3 font-medium">Asset</th>
+                        <th className="pb-3 font-medium text-right">Amount</th>
+                        <th className="pb-3 font-medium text-right">Value</th>
+                        <th className="pb-3 font-medium text-right">Allocation</th>
+                        <th className="pb-3 font-medium text-right">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {positions.map((position) => (
+                        <tr key={position.asset} className="border-b border-[#2A2A3A] last:border-0">
+                          <td className="py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3B82F6] to-[#06B6D4] flex items-center justify-center">
+                                <span className="text-sm font-bold text-white">{position.asset[0]}</span>
+                              </div>
+                              <span className="font-medium text-white">{position.asset}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 text-right text-[#9CA3AF]">
+                            {position.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                          </td>
+                          <td className="py-4 text-right font-medium text-white tabular-nums">
+                            {formatCurrency(position.value_usd)}
+                          </td>
+                          <td className="py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="w-16 h-2 rounded-full bg-[#1A1A24]">
+                                <div
+                                  className="h-full rounded-full bg-[#3B82F6]"
+                                  style={{ width: `${position.allocation}%` }}
+                                />
+                              </div>
+                              <span className="text-sm text-[#9CA3AF] w-12 text-right">
+                                {position.allocation.toFixed(1)}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-4 text-right text-sm text-[#6B7280]">
+                            {position.source}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
